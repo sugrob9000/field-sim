@@ -1,0 +1,63 @@
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout (std430, binding = 0) buffer buf_particles {
+	struct { vec2 front, back; } particles[];
+};
+
+layout (std140, binding = 0) uniform ub_actors {
+	struct {
+		vec2 position;
+		float force;
+		float pad0;
+	} vortices[64];
+	struct {
+		vec2 position;
+		float force;
+		float pad0;
+	} pushers[64];
+};
+
+layout (location = 0) uniform uint current_tick;
+layout (location = 1) uniform uint particle_lifetime = 240;
+layout (location = 10) uniform uint num_vortices;
+layout (location = 11) uniform uint num_pushers;
+
+#define MAX_VELOCITY 2
+vec2 velocity_at (vec2 p)
+{
+	vec2 vel = vec2(0);
+
+	// Linear falloff of force
+	for (uint i = 0; i < num_vortices; i++) {
+		vec2 r = p - vortices[i].position;
+		vel += vortices[i].force * vec2(-r.y, r.x) / dot(r, r);
+	}
+	for (uint i = 0; i < num_pushers; i++) {
+		vec2 r = p - pushers[i].position;
+		vel += pushers[i].force * r / dot(r, r);
+	}
+
+	float vel2 = dot(vel,vel);
+	if (vel2 > MAX_VELOCITY * MAX_VELOCITY)
+		vel *= MAX_VELOCITY / sqrt(vel2);
+	return vel;
+}
+
+const uint ID = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+
+void main ()
+{
+	uint random = 1664525 * ID + 1013904223;
+	random ^= (random << 13);
+	random ^= (random >> 17);
+	random ^= (random << 5);
+
+	// Reset the particle to its initial position every MAX_LIFETIME ticks,
+	// with a pseudo-random shift for each particle
+	vec2 old_position = ((current_tick - random) % particle_lifetime == 0)
+		? vec2(gl_WorkGroupID.xy)
+		: particles[ID].front;
+
+	particles[ID].front = old_position + velocity_at(old_position);
+	particles[ID].back = old_position;
+}
