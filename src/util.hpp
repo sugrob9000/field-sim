@@ -187,8 +187,8 @@ public:
  * A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
  * Cannot be made constexpr without compiler support, otherwise works
  */
-template <typename T> concept trivial = std::is_trivial_v<T>;
-template <trivial T> T* start_lifetime_as (void* p)
+template <typename T> concept Trivial = std::is_trivial_v<T>;
+template <Trivial T> T* start_lifetime_as (void* p)
 {
 	/* Start the lifetime of an array of bytes there */
 	std::byte* const bytes = new (p) std::byte[sizeof(T)];

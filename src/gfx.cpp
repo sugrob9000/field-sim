@@ -183,20 +183,16 @@ struct Field_viz {
 	// Things that act upon the field are represented in a uniform buffer,
 	// the format of which is one `GPU_actors` struct
 	// There are vortices (clockwise with force<0) and pushers (pullers when force<0)
-
-	constexpr static int max_vortices = 64;
-	constexpr static int max_pushers = 64;
-
 	struct GPU_actors {
-		struct alignas(16) GPU_vortex { vec2 position; float force; };
-		struct alignas(16) GPU_pusher { vec2 position; float force; };
-		GPU_vortex vortices[max_vortices];
-		GPU_pusher pushers[max_pushers];
+		static constexpr int max_vortices = 64;
+		static constexpr int max_pushers = 64;
+		struct alignas(16) Vortex { vec2 position; float force; };
+		struct alignas(16) Pusher { vec2 position; float force; };
+		Vortex vortices[max_vortices];
+		Pusher pushers[max_pushers];
 	};
-
 	GLuint actors_buffer_id;
 	GPU_actors* actors_buffer_mapped; // mapped write-only
-
 	unsigned num_vortices = 0;
 	unsigned num_pushers = 0;
 
@@ -222,12 +218,12 @@ struct Field_viz {
 			glCreateBuffers(1, &actors_buffer_id);
 			glNamedBufferStorage(actors_buffer_id, sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
+			actors_buffer_mapped = start_lifetime_as<GPU_actors>
+				(glMapNamedBufferRange(actors_buffer_id, 0, sizeof(GPU_actors),
+						GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT));
 
-			actors_buffer_mapped
-				= start_lifetime_as<GPU_actors>(glMapNamedBuffer(actors_buffer_id, GL_WRITE_ONLY));
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ssbo_bind_particles, particles_buffer_id);
 			glBindBufferBase(GL_UNIFORM_BUFFER, ubo_bind_actors, actors_buffer_id);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ssbo_bind_particles, particles_buffer_id);
 
 			render_program_id = glsl::make_program_frag_vert("lines.frag", "lines.vert");
 			compute_program_id = glsl::make_program_compute("particle.comp");
@@ -237,6 +233,7 @@ struct Field_viz {
 	~Field_viz () {
 		glsl::delete_program(compute_program_id);
 		glsl::delete_program(render_program_id);
+
 		glDeleteVertexArrays(1, &lines_vao_id);
 		glDeleteBuffers(1, &particles_buffer_id);
 
@@ -245,7 +242,12 @@ struct Field_viz {
 	}
 
 	void advance () {
-		{ // Send actor data
+		constexpr GLint unif_loc_tick = 0;
+		constexpr GLint unif_loc_particle_lifetime = 1;
+		constexpr GLint unif_loc_num_vortices = 10;
+		constexpr GLint unif_loc_num_pushers = 11;
+
+		{ // Update mapped buffer data
 			auto& m = *actors_buffer_mapped;
 			auto [w, h] = decompose(particle_grid);
 			float sec = current_tick / 60.0f;
@@ -258,18 +260,18 @@ struct Field_viz {
 			num_pushers = 1;
 		}
 
-		constexpr GLint unif_loc_tick = 0;
-		constexpr GLint unif_loc_particle_lifetime = 1;
-		constexpr GLint unif_loc_num_vortices = 10;
-		constexpr GLint unif_loc_num_pushers = 11;
-
 		glUseProgram(compute_program_id);
 		glUniform1ui(unif_loc_tick, current_tick);
 		glUniform1ui(unif_loc_particle_lifetime, 240);
 		glUniform1ui(unif_loc_num_vortices, num_vortices);
 		glUniform1ui(unif_loc_num_pushers, num_pushers);
 
-		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+		{ // Flush mapped buffer data
+			glFlushMappedNamedBufferRange(actors_buffer_id,
+					offsetof(GPU_actors, vortices), sizeof(GPU_actors::Vortex) * num_vortices);
+			glFlushMappedNamedBufferRange(actors_buffer_id,
+					offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
+		}
 		glDispatchCompute(particle_grid.x, particle_grid.y, 1);
 
 		current_tick++;
