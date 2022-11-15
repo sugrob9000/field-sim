@@ -132,11 +132,14 @@ public:
 
 /*
  * Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
- * necessarily with a "null" value and a stateless deleter.
- * TODO: Doesn't implement the full unique_ptr-like interface yet
+ * necessarily with one possible "null" value and a stateless deleter.
+ * TODO: Does not implement the full unique_ptr-like interface yet
  */
 template <std::integral Id, typename Deleter, Id null_handle = 0>
 class Unique_handle {
+	static_assert(!std::is_pointer_v<Deleter> && !std::is_function_v<Deleter>,
+			"The types for functions and function pointers are not monostate: "
+			"they only encode the signature, which is not enough information");
 	static_assert(std::is_empty_v<Deleter>, "Unique_handle only supports stateless deleters");
 	Id id = null_handle;
 	[[nodiscard]] Id pilfer () {
@@ -176,6 +179,22 @@ public:
 	}
 
 	void swap (Unique_handle& other) { std::swap(id, other.id); }
+
+	operator bool () const { return id != null_handle; }
 };
+
+/*
+ * A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
+ * Cannot be made constexpr without compiler support, otherwise works
+ */
+template <typename T> concept trivial = std::is_trivial_v<T>;
+template <trivial T> T* start_lifetime_as (void* p)
+{
+	/* Start the lifetime of an array of bytes there */
+	std::byte* const bytes = new (p) std::byte[sizeof(T)];
+	T* const ptr = reinterpret_cast<T*>(bytes);
+	(void) *ptr; /* Tell the abstract machine that we require a T there */
+	return ptr;
+}
 
 #endif /* UTIL_HPP */

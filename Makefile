@@ -1,6 +1,6 @@
 .SUFFIXES:
 .DEFAULT: all
-.PHONY: all run clean gdb valgrind
+.PHONY: all run clean
 
 BIN = bin
 SRC = src
@@ -21,7 +21,7 @@ VALGRIND = valgrind
 
 FILES-CXX = $(shell find $(SRC) -type f -name "*.cpp" -o -name "*.cc")
 FILES-OBJ = $(FILES-CXX:$(SRC)/%=$(BIN)/%.o)
-FILES-DEP = $(FILES-CXX:$(SRC)/%=$(BIN)/%.d)
+FILES-DEP = $(FILES-OBJ:%.o=%.d)
 
 all: $(EXEC)
 	@echo "  >> $(EXEC) is up to date"
@@ -41,9 +41,3 @@ run: all
 
 clean:
 	$(RM) $(BIN) $(EXEC)
-
-gdb: all
-	$(GDB) $(EXEC)
-
-valgrind: all
-	$(VALGRIND) $(EXEC) --leak-check=full

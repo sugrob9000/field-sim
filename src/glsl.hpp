@@ -26,9 +26,13 @@ enum class Shader_type: GLenum {
 	vertex = GL_VERTEX_SHADER,
 	geometry = GL_GEOMETRY_SHADER,
 	compute = GL_COMPUTE_SHADER,
+	tess_control = GL_TESS_CONTROL_SHADER,
+	tess_eval = GL_TESS_EVALUATION_SHADER,
 };
+
 struct Shader_deleter_ { void operator() (GLuint id) { glDeleteShader(id); } };
 using Shader = Unique_handle<GLuint, Shader_deleter_, 0>;
+
 Shader shader_from_file (Shader_type, std::string_view file_path);
 Shader shader_from_string (Shader_type, std::string_view source);
 

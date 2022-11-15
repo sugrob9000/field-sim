@@ -44,9 +44,9 @@ Shader shader_from_string (Shader_type type, std::string_view source)
 // ============================= Loading shader from file =============================
 // A dumb implementation that supports #include, but leaves other preprocessing
 // directives to the driver, which means you cannot guard inclusion with #if and friends:
-// - cannot prevent the inclusion of an invalid file from happening
-//   (if there's an #include in the source, it will be attempted and failed)
-// - cannot prevent recursive inclusion (will fail after limited depth)
+// - you cannot prevent the inclusion of a file from happening;
+//   if there is an #include in the source, it will be attempted
+// - you cannot prevent recursive inclusion (in general, there is a limited depth)
 
 static std::optional<std::string> try_get_include_filename (std::string_view line)
 {

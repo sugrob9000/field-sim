@@ -223,11 +223,8 @@ struct Field_viz {
 			glNamedBufferStorage(actors_buffer_id, sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
 
-			{ // Pre-C++23 voodoo to start the lifetime of a GPU_actors object in mapped memory
-				void* mapped = glMapNamedBuffer(actors_buffer_id, GL_WRITE_ONLY);
-				std::byte* bytes = new (mapped) std::byte[sizeof(GPU_actors)];
-				actors_buffer_mapped = reinterpret_cast<GPU_actors*>(bytes);
-			}
+			actors_buffer_mapped
+				= start_lifetime_as<GPU_actors>(glMapNamedBuffer(actors_buffer_id, GL_WRITE_ONLY));
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ssbo_bind_particles, particles_buffer_id);
 			glBindBufferBase(GL_UNIFORM_BUFFER, ubo_bind_actors, actors_buffer_id);
