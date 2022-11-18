@@ -1,9 +1,9 @@
 #ifndef MATH_HPP
 #define MATH_HPP
 
-#include <glm/glm.hpp>
+#include "util/util.hpp"
 #include <glm/ext.hpp>
-#include "util.hpp"
+#include <glm/glm.hpp>
 
 using glm::vec2, glm::vec3, glm::vec4;
 using glm::mat2, glm::mat3, glm::mat4;

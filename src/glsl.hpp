@@ -1,7 +1,8 @@
 #ifndef GLSL_HPP
 #define GLSL_HPP
 
-#include "util.hpp"
+#include "util/unique_handle.hpp"
+#include "util/util.hpp"
 #include <GL/glew.h>
 #include <span>
 #include <string>

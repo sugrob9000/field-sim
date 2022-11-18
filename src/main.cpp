@@ -1,10 +1,10 @@
 #include "gfx.hpp"
-#include "util.hpp"
 #include "math.hpp"
-#include <vector>
-#include <iostream>
+#include "util/util.hpp"
 #include <chrono>
+#include <iostream>
 #include <thread>
+#include <vector>
 
 struct Input_state {
 	bool should_quit = false;
@@ -38,7 +38,6 @@ Input_state& Input_state::poll_events ()
 		switch (event.type) {
 		case SDL_QUIT: should_quit = true; break;
 		case SDL_KEYDOWN:
-			if (event.key.repeat) break;
 			switch (event.key.keysym.sym) {
 			case SDLK_q: should_quit = true;; break;
 			case SDLK_c: should_clear_frame ^= 1; break;

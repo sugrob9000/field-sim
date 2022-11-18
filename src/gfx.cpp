@@ -1,17 +1,18 @@
 #include "gfx.hpp"
-#include "util.hpp"
-#include "math.hpp"
 #include "glsl.hpp"
+#include "math.hpp"
+#include "util/deferred_init.hpp"
+#include "util/util.hpp"
+#include <SDL2/SDL_opengl.h>
 #include <cassert>
 #include <iostream>
-#include <vector>
 
 using Resolution = glm::vec<2, unsigned>;
 
 namespace gfx {
 
-void fieldviz_init (Resolution);
-void fieldviz_deinit ();
+static void fieldviz_init (Resolution);
+static void fieldviz_deinit ();
 
 static int poll_gl_errors ()
 {
@@ -180,6 +181,8 @@ struct Field_viz {
 	GLuint render_program_id;
 	GLuint compute_program_id;
 
+	unsigned particle_lifetime = 240;
+
 	// Things that act upon the field are represented in a uniform buffer,
 	// the format of which is one `GPU_actors` struct
 	// There are vortices (clockwise with force<0) and pushers (pullers when force<0)
@@ -214,6 +217,7 @@ struct Field_viz {
 		{ // Shaders, SSBOs and UBOs
 			constexpr GLuint ssbo_bind_particles = 0;
 			constexpr GLuint ubo_bind_actors = 0;
+			// TODO: SSBO and UBO binding points are global, should reflect that better
 
 			glCreateBuffers(1, &actors_buffer_id);
 			glNamedBufferStorage(actors_buffer_id, sizeof(GPU_actors), nullptr,
@@ -262,7 +266,7 @@ struct Field_viz {
 
 		glUseProgram(compute_program_id);
 		glUniform1ui(unif_loc_tick, current_tick);
-		glUniform1ui(unif_loc_particle_lifetime, 240);
+		glUniform1ui(unif_loc_particle_lifetime, particle_lifetime);
 		glUniform1ui(unif_loc_num_vortices, num_vortices);
 		glUniform1ui(unif_loc_num_pushers, num_pushers);
 
@@ -294,13 +298,13 @@ struct Field_viz {
 };
 static Deferred_init_unchecked<Field_viz> fieldviz;
 
-void fieldviz_init (Resolution res)
+static void fieldviz_init (Resolution res)
 {
 	constexpr unsigned initial_spacing = 2;
 	fieldviz.init(res / initial_spacing);
 }
 
-void fieldviz_deinit () { fieldviz.deinit(); }
+static void fieldviz_deinit () { fieldviz.deinit(); }
 
 void fieldviz_draw (bool should_clear)
 {
@@ -324,9 +328,6 @@ void fieldviz_draw (bool should_clear)
 			GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
-void fieldviz_update ()
-{
-	fieldviz->advance();
-}
+void fieldviz_update () { fieldviz->advance(); }
 
 } // namespace

@@ -1,5 +1,5 @@
 #include "glsl.hpp"
-#include "util.hpp"
+#include "util/util.hpp"
 #include <fstream>
 #include <memory>
 #include <optional>
