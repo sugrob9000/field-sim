@@ -9,23 +9,31 @@
 
 using Resolution = glm::vec<2, unsigned>;
 
-namespace gfx {
+namespace gl { // TODO: factor most of gl:: out into a proper unit
+struct Texture_deleter_ { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
+using Texture = Unique_handle<GLuint, Texture_deleter_, 0>;
 
-static void fieldviz_init (Resolution);
-static void fieldviz_deinit ();
+struct Framebuffer_deleter_ { void operator() (GLuint id) { glDeleteFramebuffers(1, &id); } };
+using Framebuffer = Unique_handle<GLuint, Framebuffer_deleter_, 0>;
 
-static int poll_gl_errors ()
+static GLuint gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return id; }
+static GLuint gen_texture () { GLuint id; glGenTextures(1, &id); return id; }
+
+static int poll_errors ()
 {
 	int n = 0;
 	for (GLenum err; (err = glGetError()) != GL_NO_ERROR; n++)
 		WARNING("OpenGL error: {0} (0x{0:04X})", err);
-	if (n > 0) {
-		for (int i = 0; i < 40; i++)
-			std::cerr << '=';
-		std::cerr << std::endl;
-	}
+	if (n > 0)
+		WARNING("{:=>20}", ' ');
 	return n;
 }
+} // namespace
+
+namespace gfx {
+
+static void fieldviz_init (Resolution);
+static void fieldviz_deinit ();
 
 struct Compile_time_cfg {
 	bool debug;
@@ -48,8 +56,8 @@ struct Context {
 	// For the contents of the framebuffer to be well-defined at frame start, we have
 	// to own the framebuffer, otherwise they are undefined
 	// (and do become garbage in practice, in the absence of a compositor)
-	GLuint accumulation_framebuffer;
-	GLuint accumulation_framebuffer_texture;
+	gl::Framebuffer accumulation_fbo;
+	gl::Texture accumulation_texture;
 
 	Context (Resolution res)
 		: resolution{ res }
@@ -108,11 +116,11 @@ struct Context {
 		fieldviz_init(resolution);
 
 		{ // Framebuffer
-			glCreateFramebuffers(1, &accumulation_framebuffer);
-			glBindFramebuffer(GL_FRAMEBUFFER, accumulation_framebuffer);
+			accumulation_fbo.reset(gl::gen_framebuffer());
+			glBindFramebuffer(GL_FRAMEBUFFER, accumulation_fbo.get());
 
-			glGenTextures(1, &accumulation_framebuffer_texture);
-			glBindTexture(GL_TEXTURE_2D, accumulation_framebuffer_texture);
+			accumulation_texture.reset(gl::gen_texture());
+			glBindTexture(GL_TEXTURE_2D, accumulation_texture.get());
 
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -122,20 +130,17 @@ struct Context {
 			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, resolution.x, resolution.y);
 
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					accumulation_framebuffer_texture, 0);
+					accumulation_texture.get(), 0);
 		}
 
-		if (int errors = poll_gl_errors())
+		if (int errors = gl::poll_errors())
 			FATAL("{} OpenGL error(s) during context init", errors);
 	}
 
 	~Context () {
-		glDeleteFramebuffers(1, &accumulation_framebuffer);
-		glDeleteTextures(1, &accumulation_framebuffer_texture);
-
 		fieldviz_deinit();
 
-		if (int errors = poll_gl_errors())
+		if (int errors = gl::poll_errors())
 			FATAL("{} OpenGL error(s) during context teardown", errors);
 
 		SDL_GL_DeleteContext(glcontext);
@@ -157,7 +162,7 @@ void handle_sdl_event (const SDL_Event& event)
 
 void present_frame ()
 {
-	poll_gl_errors();
+	gl::poll_errors();
 	SDL_GL_SwapWindow(render_context->window);
 }
 
@@ -310,7 +315,7 @@ void fieldviz_draw (bool should_clear)
 {
 	const auto& rc = *render_context;
 
-	glBindFramebuffer(GL_FRAMEBUFFER, rc.accumulation_framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, rc.accumulation_fbo.get());
 	glViewport(0, 0, rc.resolution.x, rc.resolution.y);
 
 	if (should_clear) {
@@ -320,7 +325,7 @@ void fieldviz_draw (bool should_clear)
 
 	fieldviz->draw(rc.resolution);
 
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accumulation_framebuffer);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accumulation_fbo.get());
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 	glBlitFramebuffer(
 			0, 0, rc.resolution.x, rc.resolution.y,
