@@ -4,12 +4,25 @@
 #include "util/deferred_init.hpp"
 #include "util/util.hpp"
 #include <SDL2/SDL_opengl.h>
+#include <bit>
 #include <cassert>
 #include <iostream>
 
 using Resolution = glm::vec<2, unsigned>;
 
 namespace gl { // TODO: factor most of gl:: out into a proper unit
+
+struct Compile_time_cfg {
+	bool debug;
+	bool multisample;
+	unsigned multisample_samples;
+};
+constexpr static Compile_time_cfg compile_time_cfg = {
+	.debug = false,
+	.multisample = true,
+	.multisample_samples = 4,
+};
+
 struct Texture_deleter_ { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
 using Texture = Unique_handle<GLuint, Texture_deleter_, 0>;
 
@@ -35,17 +48,6 @@ namespace gfx {
 static void fieldviz_init (Resolution);
 static void fieldviz_deinit ();
 
-struct Compile_time_cfg {
-	bool debug;
-	bool multisample;
-	unsigned multisample_samples;
-};
-constexpr static Compile_time_cfg compile_time_cfg = {
-	.debug = false,
-	.multisample = true,
-	.multisample_samples = 4,
-};
-
 struct Context {
 	Resolution resolution;
 
@@ -56,8 +58,9 @@ struct Context {
 	// For the contents of the framebuffer to be well-defined at frame start, we have
 	// to own the framebuffer, otherwise they are undefined
 	// (and do become garbage in practice, in the absence of a compositor)
-	gl::Framebuffer accumulation_fbo;
-	gl::Texture accumulation_texture;
+	Resolution accum_fbo_size = { 0, 0 };
+	gl::Framebuffer accum_fbo;
+	gl::Texture accum_texture;
 
 	Context (Resolution res)
 		: resolution{ res }
@@ -68,8 +71,10 @@ struct Context {
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-		if constexpr (compile_time_cfg.multisample)
-			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, compile_time_cfg.multisample_samples);
+		if constexpr (gl::compile_time_cfg.multisample) {
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,
+					gl::compile_time_cfg.multisample_samples);
+		}
 
 		SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
@@ -79,10 +84,6 @@ struct Context {
 				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 		if (window == nullptr)
 			FATAL("Failed to create SDL window: {}", SDL_GetError());
-
-		// The framebuffer will only be so big, so don't let the window ever get larger
-		// than the size it is initially created. TODO handle this more gracefully
-		SDL_SetWindowMaximumSize(window, resolution.x, resolution.y);
 
 		glcontext = SDL_GL_CreateContext(window);
 		if (!glcontext)
@@ -94,14 +95,14 @@ struct Context {
 
 		SDL_GL_SetSwapInterval(1);
 
-		if constexpr (compile_time_cfg.multisample) {
+		if constexpr (gl::compile_time_cfg.multisample) {
 			glEnable(GL_MULTISAMPLE);
 			glEnable(GL_BLEND);
 		}
 
 		SDL_SetWindowTitle(window, "Vector fields");
 
-		if constexpr (compile_time_cfg.debug) {
+		if constexpr (gl::compile_time_cfg.debug) {
 			glEnable(GL_DEBUG_OUTPUT);
 			auto callback = [] (
 					[[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
@@ -114,24 +115,7 @@ struct Context {
 		}
 
 		fieldviz_init(resolution);
-
-		{ // Framebuffer
-			accumulation_fbo.reset(gl::gen_framebuffer());
-			glBindFramebuffer(GL_FRAMEBUFFER, accumulation_fbo.get());
-
-			accumulation_texture.reset(gl::gen_texture());
-			glBindTexture(GL_TEXTURE_2D, accumulation_texture.get());
-
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, resolution.x, resolution.y);
-
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					accumulation_texture.get(), 0);
-		}
+		ensure_least_framebuffer_size(resolution);
 
 		if (int errors = gl::poll_errors())
 			FATAL("{} OpenGL error(s) during context init", errors);
@@ -147,6 +131,53 @@ struct Context {
 		SDL_DestroyWindow(window);
 		SDL_Quit();
 	}
+
+	void ensure_least_framebuffer_size (Resolution required_size) {
+		if (accum_fbo_size.x >= required_size.x && accum_fbo_size.y >= required_size.y)
+			return;
+
+		constexpr Resolution max_size = { 3840, 2160 };
+		if (required_size.x > max_size.x || required_size.y > max_size.y) {
+			FATAL("Tried to resize framebuffer to at least {}, which is too large (max {})",
+					required_size, max_size);
+		}
+
+		// Heuristic for new frambuffer size
+		for (int dim: { 0, 1 }) {
+			auto& elem = accum_fbo_size[dim];
+			if (elem == 0) {
+				// if there had been no size, anticipate at first that there will be no big
+				// resizes and allocate the exact amount
+				elem = required_size[dim];
+			} else {
+				// otherwise, use whichever next power of 2 is large enough
+				for (elem = 1u << std::bit_width(elem); elem < required_size[dim]; )
+					elem <<= 1;
+			}
+		}
+
+		accum_fbo.reset(gl::gen_framebuffer());
+		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
+
+		accum_texture.reset(gl::gen_texture());
+
+		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, accum_fbo_size.x, accum_fbo_size.y);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+				accum_texture.get(), 0);
+	}
+
+	void update_resolution (Resolution res) {
+		this->resolution = res;
+		this->ensure_least_framebuffer_size(res);
+	}
 };
 static Deferred_init<Context> render_context;
 
@@ -157,7 +188,7 @@ void handle_sdl_event (const SDL_Event& event)
 {
 	if (event.type == SDL_WINDOWEVENT
 	&& event.window.event == SDL_WINDOWEVENT_RESIZED)
-		render_context->resolution = { event.window.data1, event.window.data2 };
+		render_context->update_resolution({ event.window.data1, event.window.data2 });
 }
 
 void present_frame ()
@@ -315,7 +346,7 @@ void fieldviz_draw (bool should_clear)
 {
 	const auto& rc = *render_context;
 
-	glBindFramebuffer(GL_FRAMEBUFFER, rc.accumulation_fbo.get());
+	glBindFramebuffer(GL_FRAMEBUFFER, rc.accum_fbo.get());
 	glViewport(0, 0, rc.resolution.x, rc.resolution.y);
 
 	if (should_clear) {
@@ -325,7 +356,7 @@ void fieldviz_draw (bool should_clear)
 
 	fieldviz->draw(rc.resolution);
 
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accumulation_fbo.get());
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accum_fbo.get());
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 	glBlitFramebuffer(
 			0, 0, rc.resolution.x, rc.resolution.y,

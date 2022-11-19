@@ -8,7 +8,8 @@
 /*
  * Unique_handle: like std::unique_ptr, but for arbitrary integer handles, necessarily
  * with one possible "null" value and a stateless deleter. (Neither an additional bool nor
- * the deleter are stored.) TODO: Does not implement the full unique_ptr-like interface
+ * the deleter are stored.)
+ * TODO: noexcept correctness
  */
 template <std::integral Id, typename Deleter, Id null_handle = 0>
 class Unique_handle {
@@ -23,10 +24,14 @@ class Unique_handle {
 		return result;
 	}
 public:
+	using value_type = Id;
+	using deleter_type = Deleter;
+
 	Unique_handle () { }
 	Unique_handle (Id id_): id{ id_ } { }
 	Unique_handle (const Unique_handle&) = delete;
 	Unique_handle (Unique_handle&& other): id{ other.disown() } { }
+	Unique_handle& operator= (Id id_) { this->reset(id); }
 	Unique_handle& operator= (const Unique_handle&) = delete;
 	Unique_handle& operator= (Unique_handle&& other) {
 		if (this != &other) {
@@ -41,6 +46,9 @@ public:
 		if (id) Deleter{}(id);
 		return disown();
 	}
+
+	[[nodiscard]] Id operator* () const { return this->get(); }
+	/* operator-> makes no sense, Id is never a pointer nor object with members */
 
 	[[nodiscard]] Id get () const {
 		assert(id != null_handle);

@@ -8,9 +8,9 @@
 
 /*
  * Wrappers for in-place deferred initialization: allocate the space up front,
- * but construct and destruct the object explicitly and at any chosen point,
- * avoiding static initialization order fiasco.
- * Mostly intended for global variables.
+ * but construct and destruct the object explicitly and at any chosen point.
+ * Mostly intended for global variables, to avoid static initialization order fiasco,
+ * but could be useful for data members also
  */
 
 template <typename T> class Deferred_init_unchecked {

@@ -1,10 +1,10 @@
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout (std430, binding = 0) buffer buf_particles {
+layout (std430, binding = 0) buffer ssbo_particles {
 	struct { vec2 front, back; } particles[];
 };
 
-layout (std140, binding = 0) uniform ub_actors {
+layout (std140, binding = 0) uniform ubo_actors {
 	struct {
 		vec2 position;
 		float force;
@@ -43,10 +43,9 @@ vec2 velocity_at (vec2 p)
 	return vel;
 }
 
-const uint ID = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
-
 void main ()
 {
+	const uint ID = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
 	uint random = 1664525 * ID + 1013904223;
 	random ^= (random << 13);
 	random ^= (random >> 17);
