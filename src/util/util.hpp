@@ -41,25 +41,25 @@ template <typename First, typename... Rest> void debug_expr_
 #define PRAGMA_POISON(WORD)
 #endif
 
-inline void vcomplain_ (const char* prefix, fmt::string_view f, fmt::format_args args)
+inline void vcomplain_ (const char* prefix, fmt::string_view format, fmt::format_args args)
 {
 	std::fputs(prefix, stderr);
-	fmt::vprint(stderr, f, args);
+	fmt::vprint(stderr, format, args);
 	std::fputc('\n', stderr);
 	std::fflush(stderr);
 }
 
 template <typename Fmt, typename... Args>
-void fatal_ [[noreturn]] (const Fmt& f, Args&&... args)
+void fatal_ [[noreturn]] (const Fmt& format, Args&&... args)
 {
-	vcomplain_("Fatal: ", f, fmt::make_args_checked<Args...>(f, args...));
+	vcomplain_("Fatal: ", format, fmt::make_format_args(args...));
 	std::exit(1);
 }
 
 template <typename Fmt, typename... Args>
 void warning_ (const Fmt& f, Args&&... args)
 {
-	vcomplain_("Warning: ", f, fmt::make_args_checked<Args...>(f, args...));
+	vcomplain_("Warning: ", f, fmt::make_format_args(args...));
 }
 
 #define FATAL(F, ...) fatal_(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)

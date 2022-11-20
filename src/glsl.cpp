@@ -81,7 +81,7 @@ static std::optional<std::string> try_get_include_filename (std::string_view lin
 static void append_line_directive (std::string& src, int line_nr,
                                    [[maybe_unused]] std::string_view name)
 {
-	src += fmt::format("#line {} \"{}\"\n", line_nr, name);
+	src += fmt::format(FMT_STRING("#line {} \"{}\"\n"), line_nr, name);
 }
 
 constexpr static const char source_dir[] = "shader/";

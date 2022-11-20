@@ -58,6 +58,7 @@ struct Context {
 	// For the contents of the framebuffer to be well-defined at frame start, we have
 	// to own the framebuffer, otherwise they are undefined
 	// (and do become garbage in practice, in the absence of a compositor)
+	// TODO: this belongs in Field_viz
 	Resolution accum_fbo_size = { 0, 0 };
 	gl::Framebuffer accum_fbo;
 	gl::Texture accum_texture;
@@ -95,10 +96,10 @@ struct Context {
 
 		SDL_GL_SetSwapInterval(1);
 
-		if constexpr (gl::compile_time_cfg.multisample) {
+		if constexpr (gl::compile_time_cfg.multisample)
 			glEnable(GL_MULTISAMPLE);
-			glEnable(GL_BLEND);
-		}
+
+		glEnable(GL_BLEND);
 
 		SDL_SetWindowTitle(window, "Vector fields");
 
@@ -186,8 +187,7 @@ void deinit () { render_context.deinit(); }
 
 void handle_sdl_event (const SDL_Event& event)
 {
-	if (event.type == SDL_WINDOWEVENT
-	&& event.window.event == SDL_WINDOWEVENT_RESIZED)
+	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
 		render_context->update_resolution({ event.window.data1, event.window.data2 });
 }
 
