@@ -2,7 +2,7 @@
 #define GFX_HPP
 
 #include <GL/glew.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 namespace gfx {
 void init (unsigned res_x, unsigned res_y);

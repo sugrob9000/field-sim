@@ -38,7 +38,7 @@ static int poll_errors ()
 	for (GLenum err; (err = glGetError()) != GL_NO_ERROR; n++)
 		WARNING("OpenGL error: {0} (0x{0:04X})", err);
 	if (n > 0)
-		WARNING("{:=>20}", ' ');
+		WARNING("{:=>30}", ' ');
 	return n;
 }
 } // namespace
@@ -144,16 +144,17 @@ struct Context {
 		}
 
 		// Heuristic for new frambuffer size
-		for (int dim: { 0, 1 }) {
-			auto& elem = accum_fbo_size[dim];
-			if (elem == 0) {
-				// if there had been no size, anticipate at first that there will be no big
-				// resizes and allocate the exact amount
-				elem = required_size[dim];
+		for (int i: { 0, 1 }) {
+			auto& dim = accum_fbo_size[i];
+			if (dim == 0) {
+				// At first expect no big resizes, allocate the exact amount
+				dim = required_size[i];
 			} else {
-				// otherwise, use whichever next power of 2 is large enough
-				for (elem = 1u << std::bit_width(elem); elem < required_size[dim]; )
-					elem <<= 1;
+				// Otherwise use whichever next power of 2 is large enough
+				for (dim = 1u << std::bit_width(dim); dim < required_size[i]; )
+					dim <<= 1;
+				if (dim > max_size[i])
+					dim = max_size[i];
 			}
 		}
 
@@ -180,21 +181,21 @@ struct Context {
 		this->ensure_least_framebuffer_size(res);
 	}
 };
-static Deferred_init<Context> render_context;
+static Deferred_init<Context> global_render_context;
 
-void init (unsigned w, unsigned h) { render_context.init(Resolution{ w, h }); }
-void deinit () { render_context.deinit(); }
+void init (unsigned w, unsigned h) { global_render_context.init(Resolution{ w, h }); }
+void deinit () { global_render_context.deinit(); }
 
 void handle_sdl_event (const SDL_Event& event)
 {
 	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
-		render_context->update_resolution({ event.window.data1, event.window.data2 });
+		global_render_context->update_resolution({ event.window.data1, event.window.data2 });
 }
 
 void present_frame ()
 {
 	gl::poll_errors();
-	SDL_GL_SwapWindow(render_context->window);
+	SDL_GL_SwapWindow(global_render_context->window);
 }
 
 // ================================ Field visualization ================================
@@ -332,19 +333,19 @@ struct Field_viz {
 		glDrawArrays(GL_LINES, 0, 2 * total_particles());
 	}
 };
-static Deferred_init_unchecked<Field_viz> fieldviz;
+static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
 static void fieldviz_init (Resolution res)
 {
 	constexpr unsigned initial_spacing = 2;
-	fieldviz.init(res / initial_spacing);
+	global_fieldviz.init(res / initial_spacing);
 }
 
-static void fieldviz_deinit () { fieldviz.deinit(); }
+static void fieldviz_deinit () { global_fieldviz.deinit(); }
 
 void fieldviz_draw (bool should_clear)
 {
-	const auto& rc = *render_context;
+	const auto& rc = *global_render_context;
 
 	glBindFramebuffer(GL_FRAMEBUFFER, rc.accum_fbo.get());
 	glViewport(0, 0, rc.resolution.x, rc.resolution.y);
@@ -354,7 +355,7 @@ void fieldviz_draw (bool should_clear)
 		glClear(GL_COLOR_BUFFER_BIT);
 	}
 
-	fieldviz->draw(rc.resolution);
+	global_fieldviz->draw(rc.resolution);
 
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accum_fbo.get());
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -364,6 +365,6 @@ void fieldviz_draw (bool should_clear)
 			GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
-void fieldviz_update () { fieldviz->advance(); }
+void fieldviz_update () { global_fieldviz->advance(); }
 
 } // namespace
