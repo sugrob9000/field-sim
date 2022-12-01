@@ -31,7 +31,7 @@ public:
 	Unique_handle (Id id_): id{ id_ } { }
 	Unique_handle (const Unique_handle&) = delete;
 	Unique_handle (Unique_handle&& other): id{ other.disown() } { }
-	Unique_handle& operator= (Id id_) { this->reset(id); }
+	Unique_handle& operator= (Id id_) { this->reset(id_); }
 	Unique_handle& operator= (const Unique_handle&) = delete;
 	Unique_handle& operator= (Unique_handle&& other) {
 		if (this != &other) {
@@ -42,13 +42,15 @@ public:
 	}
 	~Unique_handle () { (void) release(); }
 
+	deleter_type get_deleter () const { return {}; }
+
 	[[nodiscard]] Id release () {
-		if (id) Deleter{}(id);
+		if (id) get_deleter()(id);
 		return disown();
 	}
 
 	[[nodiscard]] Id operator* () const { return this->get(); }
-	/* operator-> makes no sense, Id is never a pointer nor object with members */
+	/* operator-> makes no sense, Id is never a pointer nor class */
 
 	[[nodiscard]] Id get () const {
 		assert(id != null_handle);

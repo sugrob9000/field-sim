@@ -3,45 +3,10 @@
 #include "math.hpp"
 #include "util/deferred_init.hpp"
 #include "util/util.hpp"
-#include <SDL2/SDL_opengl.h>
 #include <bit>
-#include <cassert>
 #include <iostream>
 
 using Resolution = glm::vec<2, unsigned>;
-
-namespace gl { // TODO: factor most of gl:: out into a proper unit
-
-struct Compile_time_cfg {
-	bool debug;
-	bool multisample;
-	unsigned multisample_samples;
-};
-constexpr static Compile_time_cfg compile_time_cfg = {
-	.debug = false,
-	.multisample = true,
-	.multisample_samples = 4,
-};
-
-struct Texture_deleter_ { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
-using Texture = Unique_handle<GLuint, Texture_deleter_, 0>;
-
-struct Framebuffer_deleter_ { void operator() (GLuint id) { glDeleteFramebuffers(1, &id); } };
-using Framebuffer = Unique_handle<GLuint, Framebuffer_deleter_, 0>;
-
-static GLuint gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return id; }
-static GLuint gen_texture () { GLuint id; glGenTextures(1, &id); return id; }
-
-static int poll_errors ()
-{
-	int n = 0;
-	for (GLenum err; (err = glGetError()) != GL_NO_ERROR; n++)
-		WARNING("OpenGL error: {0} (0x{0:04X})", err);
-	if (n > 0)
-		WARNING("{:=>30}", ' ');
-	return n;
-}
-} // namespace
 
 namespace gfx {
 
@@ -63,7 +28,7 @@ struct Context {
 	gl::Framebuffer accum_fbo;
 	gl::Texture accum_texture;
 
-	Context (Resolution res)
+	Context (Resolution res, Config cfg)
 		: resolution{ res }
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -72,10 +37,8 @@ struct Context {
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-		if constexpr (gl::compile_time_cfg.multisample) {
-			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,
-					gl::compile_time_cfg.multisample_samples);
-		}
+		if (cfg.msaa_samples)
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, cfg.msaa_samples);
 
 		SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
@@ -96,36 +59,36 @@ struct Context {
 
 		SDL_GL_SetSwapInterval(1);
 
-		if constexpr (gl::compile_time_cfg.multisample)
+		if (cfg.msaa_samples)
 			glEnable(GL_MULTISAMPLE);
 
 		glEnable(GL_BLEND);
 
 		SDL_SetWindowTitle(window, "Vector fields");
 
-		if constexpr (gl::compile_time_cfg.debug) {
-			glEnable(GL_DEBUG_OUTPUT);
-			auto callback = [] (
+		if (cfg.debug) {
+			const auto callback= [] (
 					[[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
 					[[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
 					[[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
 					[[maybe_unused]] const void* param) -> void {
 				WARNING("OpenGL: {}", msg);
 			};
+			glEnable(GL_DEBUG_OUTPUT);
 			glDebugMessageCallback(callback, nullptr);
 		}
 
 		fieldviz_init(resolution);
 		ensure_least_framebuffer_size(resolution);
 
-		if (int errors = gl::poll_errors())
+		if (int errors = gl::poll_errors_and_warn())
 			FATAL("{} OpenGL error(s) during context init", errors);
 	}
 
 	~Context () {
 		fieldviz_deinit();
 
-		if (int errors = gl::poll_errors())
+		if (int errors = gl::poll_errors_and_warn())
 			FATAL("{} OpenGL error(s) during context teardown", errors);
 
 		SDL_GL_DeleteContext(glcontext);
@@ -147,7 +110,7 @@ struct Context {
 		for (int i: { 0, 1 }) {
 			auto& dim = accum_fbo_size[i];
 			if (dim == 0) {
-				// At first expect no big resizes, allocate the exact amount
+				// At first expect no big resizes, request an exact amount
 				dim = required_size[i];
 			} else {
 				// Otherwise use whichever next power of 2 is large enough
@@ -183,7 +146,10 @@ struct Context {
 };
 static Deferred_init<Context> global_render_context;
 
-void init (unsigned w, unsigned h) { global_render_context.init(Resolution{ w, h }); }
+void init (unsigned w, unsigned h, Config cfg)
+{
+	global_render_context.init(Resolution{ w, h }, cfg);
+}
 void deinit () { global_render_context.deinit(); }
 
 void handle_sdl_event (const SDL_Event& event)
@@ -194,7 +160,7 @@ void handle_sdl_event (const SDL_Event& event)
 
 void present_frame ()
 {
-	gl::poll_errors();
+	gl::poll_errors_and_warn();
 	SDL_GL_SwapWindow(global_render_context->window);
 }
 

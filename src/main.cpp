@@ -1,10 +1,7 @@
 #include "gfx.hpp"
-#include "math.hpp"
 #include "util/util.hpp"
 #include <chrono>
-#include <iostream>
 #include <thread>
-#include <vector>
 
 struct Input_state {
 	bool should_quit = false;
@@ -17,7 +14,7 @@ void wait_fps (int fps);
 
 int main ()
 {
-	gfx::init(1560, 960);
+	gfx::init(1560, 960, gfx::Config{ .debug = false, .msaa_samples = 4});
 
 	Input_state input;
 	while (!input.poll_events().should_quit) {
@@ -39,7 +36,7 @@ Input_state& Input_state::poll_events ()
 		case SDL_QUIT: should_quit = true; break;
 		case SDL_KEYDOWN:
 			switch (event.key.keysym.sym) {
-			case SDLK_q: should_quit = true;; break;
+			case SDLK_q: should_quit = true; break;
 			case SDLK_c: should_clear_frame ^= 1; break;
 			case SDLK_f: freeze_field ^= 1; break;
 			case SDLK_d:
