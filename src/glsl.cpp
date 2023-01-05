@@ -9,7 +9,8 @@ namespace glsl {
 
 constexpr static const char shader_prologue[] =
 	"#version 430 core\n"
-	"#extension GL_ARB_explicit_uniform_location: require\n";
+	"#extension GL_ARB_explicit_uniform_location: require\n"
+	"#extension GL_ARB_shading_language_include: require\n";
 
 static GLuint shader_compile (Shader_type type,
                               std::string src, // needs 0-termination, so owning

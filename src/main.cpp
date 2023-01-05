@@ -14,7 +14,7 @@ void wait_fps (int fps);
 
 int main ()
 {
-	gfx::init(1560, 960, gfx::Config{ .debug = false, .msaa_samples = 4});
+	gfx::init(1560, 960, { .debug = false, .msaa_samples = 4});
 
 	Input_state input;
 	while (!input.poll_events().should_quit) {

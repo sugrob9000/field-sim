@@ -6,9 +6,9 @@
 #include <type_traits>
 
 /*
- * Unique_handle: like std::unique_ptr, but for arbitrary integer handles, necessarily
- * with one possible "null" value and a stateless deleter. (Neither an additional bool nor
- * the deleter are stored.)
+ * Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
+ * necessarily with one possible "null" value and a stateless deleter.
+ * (Neither an additional bool nor the deleter are stored.)
  * TODO: noexcept correctness
  */
 template <std::integral Id, typename Deleter, Id null_handle = 0>
@@ -42,7 +42,7 @@ public:
 	}
 	~Unique_handle () { (void) release(); }
 
-	deleter_type get_deleter () const { return {}; }
+	Deleter get_deleter () const { return {}; }
 
 	[[nodiscard]] Id release () {
 		if (id) get_deleter()(id);

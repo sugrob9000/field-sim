@@ -12,21 +12,15 @@ namespace gfx {
 
 static void fieldviz_init (Resolution);
 static void fieldviz_deinit ();
+static void fieldviz_ensure_least_framebuffer_size (Resolution);
+
+// ========================= Rendering context setup & handling =========================
 
 struct Context {
 	Resolution resolution;
 
 	SDL_Window* window;
 	SDL_GLContext glcontext;
-
-	// For a cooler effect, we paint on top of what was drawn on the previous frame.
-	// For the contents of the framebuffer to be well-defined at frame start, we have
-	// to own the framebuffer, otherwise they are undefined
-	// (and do become garbage in practice, in the absence of a compositor)
-	// TODO: this belongs in Field_viz
-	Resolution accum_fbo_size = { 0, 0 };
-	gl::Framebuffer accum_fbo;
-	gl::Texture accum_texture;
 
 	Context (Resolution res, Config cfg)
 		: resolution{ res }
@@ -67,7 +61,7 @@ struct Context {
 		SDL_SetWindowTitle(window, "Vector fields");
 
 		if (cfg.debug) {
-			const auto callback= [] (
+			const auto callback = [] (
 					[[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
 					[[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
 					[[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
@@ -78,8 +72,9 @@ struct Context {
 			glDebugMessageCallback(callback, nullptr);
 		}
 
-		fieldviz_init(resolution);
-		ensure_least_framebuffer_size(resolution);
+		constexpr unsigned spacing = 2;
+		fieldviz_init(resolution / spacing);
+		fieldviz_ensure_least_framebuffer_size(resolution);
 
 		if (int errors = gl::poll_errors_and_warn())
 			FATAL("{} OpenGL error(s) during context init", errors);
@@ -96,73 +91,13 @@ struct Context {
 		SDL_Quit();
 	}
 
-	void ensure_least_framebuffer_size (Resolution required_size) {
-		if (accum_fbo_size.x >= required_size.x && accum_fbo_size.y >= required_size.y)
-			return;
-
-		constexpr Resolution max_size = { 3840, 2160 };
-		if (required_size.x > max_size.x || required_size.y > max_size.y) {
-			FATAL("Tried to resize framebuffer to at least {}, which is too large (max {})",
-					required_size, max_size);
-		}
-
-		// Heuristic for new frambuffer size
-		for (int i: { 0, 1 }) {
-			auto& dim = accum_fbo_size[i];
-			if (dim == 0) {
-				// At first expect no big resizes, request an exact amount
-				dim = required_size[i];
-			} else {
-				// Otherwise use whichever next power of 2 is large enough
-				for (dim = 1u << std::bit_width(dim); dim < required_size[i]; )
-					dim <<= 1;
-				if (dim > max_size[i])
-					dim = max_size[i];
-			}
-		}
-
-		accum_fbo.reset(gl::gen_framebuffer());
-		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
-
-		accum_texture.reset(gl::gen_texture());
-
-		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, accum_fbo_size.x, accum_fbo_size.y);
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-				accum_texture.get(), 0);
-	}
-
 	void update_resolution (Resolution res) {
 		this->resolution = res;
-		this->ensure_least_framebuffer_size(res);
+		fieldviz_ensure_least_framebuffer_size(res);
 	}
 };
 static Deferred_init<Context> global_render_context;
 
-void init (unsigned w, unsigned h, Config cfg)
-{
-	global_render_context.init(Resolution{ w, h }, cfg);
-}
-void deinit () { global_render_context.deinit(); }
-
-void handle_sdl_event (const SDL_Event& event)
-{
-	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
-		global_render_context->update_resolution({ event.window.data1, event.window.data2 });
-}
-
-void present_frame ()
-{
-	gl::poll_errors_and_warn();
-	SDL_GL_SwapWindow(global_render_context->window);
-}
 
 // ================================ Field visualization ================================
 
@@ -183,6 +118,14 @@ struct Field_viz {
 
 	GLuint render_program_id;
 	GLuint compute_program_id;
+
+	// For a cooler effect, we paint on top of what was drawn on the previous frame.
+	// For the contents of the framebuffer to be well-defined at frame start, we have
+	// to own the framebuffer, otherwise they are undefined
+	// (and do become garbage in practice, in the absence of a compositor)
+	Resolution accum_fbo_size = { 0, 0 };
+	gl::Framebuffer accum_fbo;
+	gl::Texture accum_texture;
 
 	unsigned particle_lifetime = 240;
 
@@ -218,10 +161,6 @@ struct Field_viz {
 		}
 
 		{ // Shaders, SSBOs and UBOs
-			constexpr GLuint ssbo_bind_particles = 0;
-			constexpr GLuint ubo_bind_actors = 0;
-			// TODO: SSBO and UBO binding points are global, should reflect that better
-
 			glCreateBuffers(1, &actors_buffer_id);
 			glNamedBufferStorage(actors_buffer_id, sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
@@ -229,8 +168,8 @@ struct Field_viz {
 				(glMapNamedBufferRange(actors_buffer_id, 0, sizeof(GPU_actors),
 						GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT));
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, ubo_bind_actors, actors_buffer_id);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ssbo_bind_particles, particles_buffer_id);
+			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer_id);
+			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer_id);
 
 			render_program_id = glsl::make_program_frag_vert("lines.frag", "lines.vert");
 			compute_program_id = glsl::make_program_compute("particle.comp");
@@ -248,12 +187,7 @@ struct Field_viz {
 		glDeleteBuffers(1, &actors_buffer_id);
 	}
 
-	void advance () {
-		constexpr GLint unif_loc_tick = 0;
-		constexpr GLint unif_loc_particle_lifetime = 1;
-		constexpr GLint unif_loc_num_vortices = 10;
-		constexpr GLint unif_loc_num_pushers = 11;
-
+	void advance_simulation () {
 		{ // Update mapped buffer data
 			auto& m = *actors_buffer_mapped;
 			auto [w, h] = decompose(particle_grid);
@@ -267,11 +201,17 @@ struct Field_viz {
 			num_pushers = 1;
 		}
 
-		glUseProgram(compute_program_id);
-		glUniform1ui(unif_loc_tick, current_tick);
-		glUniform1ui(unif_loc_particle_lifetime, particle_lifetime);
-		glUniform1ui(unif_loc_num_vortices, num_vortices);
-		glUniform1ui(unif_loc_num_pushers, num_pushers);
+		{
+			glUseProgram(compute_program_id);
+			constexpr GLint unif_loc_tick = 0;
+			constexpr GLint unif_loc_particle_lifetime = 1;
+			constexpr GLint unif_loc_num_vortices = 10;
+			constexpr GLint unif_loc_num_pushers = 11;
+			glUniform1ui(unif_loc_tick, current_tick);
+			glUniform1ui(unif_loc_particle_lifetime, particle_lifetime);
+			glUniform1ui(unif_loc_num_vortices, num_vortices);
+			glUniform1ui(unif_loc_num_pushers, num_pushers);
+		}
 
 		{ // Flush mapped buffer data
 			glFlushMappedNamedBufferRange(actors_buffer_id,
@@ -284,53 +224,115 @@ struct Field_viz {
 		current_tick++;
 	}
 
-	void draw (Resolution res) const {
-		constexpr GLint unif_loc_grid_size = 0;
-		constexpr GLint unif_loc_scale = 2;
+	void ensure_least_framebuffer_size (Resolution required_size) {
+		if (accum_fbo_size.x >= required_size.x || accum_fbo_size.y >= required_size.y)
+			return;
 
-		glUseProgram(render_program_id);
-		glUniform2ui(unif_loc_grid_size, particle_grid.x, particle_grid.y);
+		constexpr Resolution max_size = { 3840, 2160 };
+		if (required_size.x > max_size.x || required_size.y > max_size.y) {
+			FATAL("Tried to resize framebuffer to at least {}, which is too large (max {})",
+			      required_size, max_size);
+		}
 
-		// If viewport is too wide, cut off top & bottom; if too tall, cut off left & right
-		float aspect = (float) particle_grid.x * res.y / (particle_grid.y * res.x);
-		glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
+		// Heuristic for new framebuffer size: at first request an exact amount, after that
+		// use whichever power of 2 is large enough (but still not too large)
+		for (int i = 0; i < 2; i++) {
+			if (accum_fbo_size[i] == 0) {
+				accum_fbo_size[i] = required_size[i];
+			} else {
+				unsigned next_po2 = 1u << std::bit_width(required_size[i]);
+				accum_fbo_size[i] = std::clamp(accum_fbo_size[i], next_po2, max_size[i]);
+			}
+		}
+
+		accum_fbo.reset(gl::new_framebuffer());
+		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
+
+		accum_texture.reset(gl::new_texture());
+		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, accum_fbo_size.x, accum_fbo_size.y);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				GL_TEXTURE_2D, accum_texture.get(), 0);
+
+		if (GLenum s = glCheckFramebufferStatus(GL_FRAMEBUFFER); s != GL_FRAMEBUFFER_COMPLETE)
+			FATAL("Framebuffer {0} is incomplete: status {1} ({1:x})", accum_fbo.get(), s);
+	}
+
+	void draw (Resolution res, bool should_clear) const {
+		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
+		glViewport(0, 0, res.x, res.y);
+
+		if (should_clear) {
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+
+		{
+			glUseProgram(render_program_id);
+			constexpr GLint unif_loc_grid_size = 0;
+			constexpr GLint unif_loc_scale = 2;
+
+			glUniform2ui(unif_loc_grid_size, particle_grid.x, particle_grid.y);
+
+			// If viewport is too wide, cut off top & bottom; if too tall, cut off left & right
+			float aspect = (float) particle_grid.x * res.y / (particle_grid.y * res.x);
+			glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
+		}
 
 		glBindVertexArray(lines_vao_id);
 		glDrawArrays(GL_LINES, 0, 2 * total_particles());
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, accum_fbo.get());
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBlitFramebuffer(0, 0, res.x, res.y, 0, 0, res.x, res.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	}
 };
 static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
-static void fieldviz_init (Resolution res)
+
+// =============================== Shallow free functions ===============================
+
+void init (unsigned w, unsigned h, Config cfg)
 {
-	constexpr unsigned initial_spacing = 2;
-	global_fieldviz.init(res / initial_spacing);
+	global_render_context.init(Resolution{ w, h }, cfg);
+}
+void deinit () { global_render_context.deinit(); }
+
+void handle_sdl_event (const SDL_Event& event)
+{
+	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+		global_render_context->update_resolution({ event.window.data1, event.window.data2 });
+}
+
+void present_frame ()
+{
+	gl::poll_errors_and_warn();
+	SDL_GL_SwapWindow(global_render_context->window);
+}
+
+static void fieldviz_init (Resolution particle_grid_size)
+{
+	global_fieldviz.init(particle_grid_size);
 }
 
 static void fieldviz_deinit () { global_fieldviz.deinit(); }
 
 void fieldviz_draw (bool should_clear)
 {
-	const auto& rc = *global_render_context;
-
-	glBindFramebuffer(GL_FRAMEBUFFER, rc.accum_fbo.get());
-	glViewport(0, 0, rc.resolution.x, rc.resolution.y);
-
-	if (should_clear) {
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-	}
-
-	global_fieldviz->draw(rc.resolution);
-
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, rc.accum_fbo.get());
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-	glBlitFramebuffer(
-			0, 0, rc.resolution.x, rc.resolution.y,
-			0, 0, rc.resolution.x, rc.resolution.y,
-			GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	global_fieldviz->draw(global_render_context->resolution, should_clear);
 }
 
-void fieldviz_update () { global_fieldviz->advance(); }
+static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
+{
+	global_fieldviz->ensure_least_framebuffer_size(required_size);
+}
+
+void fieldviz_update () { global_fieldviz->advance_simulation(); }
 
 } // namespace
