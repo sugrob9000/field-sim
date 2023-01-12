@@ -31,8 +31,10 @@ enum class Shader_type: GLenum {
 	tess_eval = GL_TESS_EVALUATION_SHADER,
 };
 
-struct Shader_deleter_ { void operator() (GLuint id) { glDeleteShader(id); } };
-using Shader = Unique_handle<GLuint, Shader_deleter_, 0>;
+namespace detail {
+struct Shader_deleter { void operator() (GLuint id) { glDeleteShader(id); } };
+}
+using Shader = Unique_handle<GLuint, detail::Shader_deleter, 0>;
 
 Shader shader_from_file (Shader_type, std::string_view file_path);
 Shader shader_from_string (Shader_type, std::string_view source);

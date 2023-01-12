@@ -8,17 +8,18 @@
 /* Some helpful OpenGL wrappers */
 namespace gl {
 
-int poll_errors_and_warn ();
+void poll_errors_and_warn (std::string_view tag);
+void poll_errors_and_die (std::string_view tag);
 
 /* ========================== Basic OpenGL handle wrappers ========================== */
 
 namespace detail {
-struct Texture_deleter_ { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
-struct Framebuffer_deleter_ { void operator() (GLuint id) { glDeleteFramebuffers(1, &id); } };
+struct Texture_deleter { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
+struct Framebuffer_deleter { void operator() (GLuint id) { glDeleteFramebuffers(1, &id); } };
 }
 
-using Texture = Unique_handle<GLuint, detail::Texture_deleter_, 0>;
-using Framebuffer = Unique_handle<GLuint, detail::Framebuffer_deleter_, 0>;
+using Texture = Unique_handle<GLuint, detail::Texture_deleter, 0>;
+using Framebuffer = Unique_handle<GLuint, detail::Framebuffer_deleter, 0>;
 
 inline GLuint new_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return id; }
 inline GLuint new_texture () { GLuint id; glGenTextures(1, &id); return id; }
@@ -46,8 +47,15 @@ enum class SSBO_binding_point: GLenum {
 	fieldviz_particles = 0,
 };
 
-void bind_ubo (UBO_binding_point, GLuint);
-void bind_ssbo (SSBO_binding_point, GLuint);
+inline void bind_ubo (UBO_binding_point slot, GLuint id)
+{
+	glBindBufferBase(GL_UNIFORM_BUFFER, static_cast<GLenum>(slot), id);
+}
+
+inline void bind_ssbo (SSBO_binding_point slot, GLuint id)
+{
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, static_cast<GLenum>(slot), id);
+}
 
 } /* namespace gl */
 

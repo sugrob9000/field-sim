@@ -3,25 +3,24 @@
 
 namespace gl {
 
-int poll_errors_and_warn ()
+static int poll_warn_on_each ()
 {
-	int n = 0;
-	for (GLenum err; (err = glGetError()) != GL_NO_ERROR; n++)
-		WARNING("OpenGL error: {0} (0x{0:04X})", err);
-	if (n > 0)
-		WARNING("{:=>30}", ' ');
-	return n;
+	int num_errors = 0;
+	for (GLenum error; (error = glGetError()) != GL_NO_ERROR; num_errors++)
+		WARNING("OpenGL error: {0} (0x{0:04x})", error);
+	return num_errors;
 }
 
-void bind_ubo (UBO_binding_point slot, GLuint id)
+void poll_errors_and_warn (std::string_view tag)
 {
-	glBindBufferBase(GL_UNIFORM_BUFFER, static_cast<GLenum>(slot), id);
+	if (int num_errors = poll_warn_on_each(); num_errors > 0)
+		WARNING("====== {} OpenGL error(s) reported during <{}>", num_errors, tag);
 }
 
-void bind_ssbo (SSBO_binding_point slot, GLuint id)
+void poll_errors_and_die (std::string_view tag)
 {
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, static_cast<GLenum>(slot), id);
+	if (int num_errors = poll_warn_on_each(); num_errors > 0)
+		FATAL("{} OpenGL error(s) reported during <{}>", num_errors, tag);
 }
-
 
 } // namespace gl

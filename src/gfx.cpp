@@ -72,19 +72,17 @@ struct Context {
 			glDebugMessageCallback(callback, nullptr);
 		}
 
+		gl::poll_errors_and_die("context init");
+
 		constexpr unsigned spacing = 2;
 		fieldviz_init(resolution / spacing);
 		fieldviz_ensure_least_framebuffer_size(resolution);
-
-		if (int errors = gl::poll_errors_and_warn())
-			FATAL("{} OpenGL error(s) during context init", errors);
 	}
 
 	~Context () {
 		fieldviz_deinit();
 
-		if (int errors = gl::poll_errors_and_warn())
-			FATAL("{} OpenGL error(s) during context teardown", errors);
+		gl::poll_errors_and_die("context deinit");
 
 		SDL_GL_DeleteContext(glcontext);
 		SDL_DestroyWindow(window);
@@ -201,7 +199,7 @@ struct Field_viz {
 			num_pushers = 1;
 		}
 
-		{
+		{ // Update uniform data
 			glUseProgram(compute_program_id);
 			constexpr GLint unif_loc_tick = 0;
 			constexpr GLint unif_loc_particle_lifetime = 1;
@@ -219,6 +217,7 @@ struct Field_viz {
 			glFlushMappedNamedBufferRange(actors_buffer_id,
 					offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
 		}
+
 		glDispatchCompute(particle_grid.x, particle_grid.y, 1);
 
 		current_tick++;
@@ -296,13 +295,17 @@ struct Field_viz {
 static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
 
-// =============================== Shallow free functions ===============================
+// ============================= Shallow free function API =============================
 
 void init (unsigned w, unsigned h, Config cfg)
 {
 	global_render_context.init(Resolution{ w, h }, cfg);
 }
-void deinit () { global_render_context.deinit(); }
+
+void deinit ()
+{
+	global_render_context.deinit();
+}
 
 void handle_sdl_event (const SDL_Event& event)
 {
@@ -312,7 +315,7 @@ void handle_sdl_event (const SDL_Event& event)
 
 void present_frame ()
 {
-	gl::poll_errors_and_warn();
+	gl::poll_errors_and_warn("latest frame");
 	SDL_GL_SwapWindow(global_render_context->window);
 }
 
@@ -321,7 +324,10 @@ static void fieldviz_init (Resolution particle_grid_size)
 	global_fieldviz.init(particle_grid_size);
 }
 
-static void fieldviz_deinit () { global_fieldviz.deinit(); }
+static void fieldviz_deinit ()
+{
+	global_fieldviz.deinit();
+}
 
 void fieldviz_draw (bool should_clear)
 {
@@ -333,6 +339,9 @@ static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
 	global_fieldviz->ensure_least_framebuffer_size(required_size);
 }
 
-void fieldviz_update () { global_fieldviz->advance_simulation(); }
+void fieldviz_update ()
+{
+	global_fieldviz->advance_simulation();
+}
 
 } // namespace

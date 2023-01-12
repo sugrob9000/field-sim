@@ -7,7 +7,7 @@ namespace gfx {
 
 struct Config {
 	bool debug;
-	unsigned msaa_samples;  // 0 for no MSAA
+	unsigned msaa_samples;  /* 0 for no MSAA */
 };
 
 void init (unsigned res_x, unsigned res_y, Config);
