@@ -37,10 +37,6 @@ target_link_libraries(${exec}
 	${GLEW_LIBRARIES}
 	fmt imgui)
 
-# Helps incremental builds, hurts clean builds due to being a bottleneck
-set(precompiled-headers ${src-dir}/math.hpp)
-target_precompile_headers(${exec} PRIVATE ${precompiled-headers})
-
 if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
 	set(cxx-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
 	target_compile_options(${exec} PRIVATE ${cxx-warnings})

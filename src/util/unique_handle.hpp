@@ -9,6 +9,7 @@
  * Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
  * necessarily with one possible "null" value and a stateless deleter.
  * (Neither an additional bool nor the deleter are stored.)
+ *
  * TODO: noexcept correctness
  */
 template <std::integral Id, typename Deleter, Id null_handle = 0>
@@ -50,7 +51,7 @@ public:
 	}
 
 	[[nodiscard]] Id operator* () const { return this->get(); }
-	/* operator-> makes no sense, Id is never a pointer nor class */
+	/* operator-> makes no sense, there are no indirection passthrough semantics */
 
 	[[nodiscard]] Id get () const {
 		assert(id != null_handle);

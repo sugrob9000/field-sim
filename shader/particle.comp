@@ -1,20 +1,22 @@
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout (std430, binding = 0) buffer ssbo_particles {
-	struct { vec2 front, back; } particles[];
+struct Particle { vec2 front, back; };
+layout (std430, binding = 0) buffer ssbo_particles { Particle particles[]; };
+
+struct Vortex {
+	vec2 position;
+	float force;
+	float pad0;
+};
+
+struct Pusher {
+	vec2 position;
+	float force; float pad0;
 };
 
 layout (std140, binding = 0) uniform ubo_actors {
-	struct {
-		vec2 position;
-		float force;
-		float pad0;
-	} vortices[64];
-	struct {
-		vec2 position;
-		float force;
-		float pad0;
-	} pushers[64];
+	Vortex vortices[64];
+	Pusher pushers[64];
 };
 
 layout (location = 0) uniform uint current_tick;
@@ -45,8 +47,8 @@ vec2 velocity_at (vec2 p)
 
 void main ()
 {
-	const uint ID = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
-	uint random = 1664525 * ID + 1013904223;
+	uint id = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+	uint random = 1664525 * id + 1013904223;
 	random ^= (random << 13);
 	random ^= (random >> 17);
 	random ^= (random << 5);
@@ -55,8 +57,8 @@ void main ()
 	// with a pseudo-random shift for each particle
 	vec2 old_position = ((current_tick - random) % particle_lifetime == 0)
 		? vec2(gl_WorkGroupID.xy)
-		: particles[ID].front;
+		: particles[id].front;
 
-	particles[ID].front = old_position + velocity_at(old_position);
-	particles[ID].back = old_position;
+	particles[id].front = old_position + velocity_at(old_position);
+	particles[id].back = old_position;
 }

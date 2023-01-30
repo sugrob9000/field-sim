@@ -94,8 +94,6 @@ struct Context {
 		fieldviz_ensure_least_framebuffer_size(res);
 	}
 };
-static Deferred_init<Context> global_render_context;
-
 
 // ================================ Field visualization ================================
 
@@ -111,11 +109,11 @@ struct Field_viz {
 	// Particle coordinates are such that neighbors in the grid are 1 apart
 	// TODO: maybe double-buffer to run compute and draw at once
 
-	GLuint particles_buffer_id;
-	GLuint lines_vao_id;
+	gl::Buffer particles_buffer;
+	gl::Vertex_array lines_vao;
 
-	GLuint render_program_id;
-	GLuint compute_program_id;
+	glsl::Program render_program;
+	glsl::Program compute_program;
 
 	// For a cooler effect, we paint on top of what was drawn on the previous frame.
 	// For the contents of the framebuffer to be well-defined at frame start, we have
@@ -125,7 +123,7 @@ struct Field_viz {
 	gl::Framebuffer accum_fbo;
 	gl::Texture accum_texture;
 
-	unsigned particle_lifetime = 240;
+	unsigned particle_lifetime = 200;
 
 	// Things that act upon the field are represented in a uniform buffer,
 	// the format of which is one `GPU_actors` struct
@@ -138,7 +136,7 @@ struct Field_viz {
 		Vortex vortices[max_vortices];
 		Pusher pushers[max_pushers];
 	};
-	GLuint actors_buffer_id;
+	gl::Buffer actors_buffer;
 	GPU_actors* actors_buffer_mapped; // mapped write-only
 	unsigned num_vortices = 0;
 	unsigned num_pushers = 0;
@@ -146,61 +144,64 @@ struct Field_viz {
 	Field_viz (Resolution particle_grid_size_): particle_grid { particle_grid_size_ }
 	{
 		{ // VBO
-			glGenBuffers(1, &particles_buffer_id);
-			glBindBuffer(GL_ARRAY_BUFFER, particles_buffer_id);
+			particles_buffer = gl::make_buffer();
+			glBindBuffer(GL_ARRAY_BUFFER, particles_buffer.get());
 			glBufferStorage(GL_ARRAY_BUFFER, 2*sizeof(vec2)*total_particles(), nullptr, 0);
 		}
 
 		{ // VAO & vertex format
-			glGenVertexArrays(1, &lines_vao_id);
-			glBindVertexArray(lines_vao_id);
+			lines_vao = gl::make_vertex_array();
+			glBindVertexArray(lines_vao.get());
 			glEnableVertexAttribArray(0);
 			glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(vec2), (const void*) 0);
 		}
 
 		{ // Shaders, SSBOs and UBOs
-			glCreateBuffers(1, &actors_buffer_id);
-			glNamedBufferStorage(actors_buffer_id, sizeof(GPU_actors), nullptr,
+			actors_buffer = gl::make_buffer();
+			glNamedBufferStorage(actors_buffer.get(), sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-			actors_buffer_mapped = start_lifetime_as<GPU_actors>
-				(glMapNamedBufferRange(actors_buffer_id, 0, sizeof(GPU_actors),
-						GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT));
+			actors_buffer_mapped = gl::map_buffer_range_as<GPU_actors>
+				(actors_buffer, 0, sizeof(GPU_actors),
+				 GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT);
 
-			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer_id);
-			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer_id);
+			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
+			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
 
-			render_program_id = glsl::make_program_frag_vert("lines.frag", "lines.vert");
-			compute_program_id = glsl::make_program_compute("particle.comp");
+			render_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
+			compute_program = glsl::Program::from_compute("particle.comp");
 		}
+
+		gl::poll_errors_and_die("field viz init");
 	}
 
 	~Field_viz () {
-		glsl::delete_program(compute_program_id);
-		glsl::delete_program(render_program_id);
-
-		glDeleteVertexArrays(1, &lines_vao_id);
-		glDeleteBuffers(1, &particles_buffer_id);
-
-		glUnmapNamedBuffer(actors_buffer_id);
-		glDeleteBuffers(1, &actors_buffer_id);
+		gl::unmap_buffer(actors_buffer);
 	}
 
 	void advance_simulation () {
 		{ // Update mapped buffer data
 			auto& m = *actors_buffer_mapped;
-			auto [w, h] = decompose(particle_grid);
+			float w = particle_grid.x;
+			float h = particle_grid.y;
 			float sec = current_tick / 60.0f;
 
-			m.vortices[0] = { .position = { w * 0.5, h * 0.5 }, .force = 200 };
-			m.vortices[1] = { .position = { w * 0.2, h * 0.1 }, .force = 100 * sin(sec) };
-			num_vortices = 2;
+			num_vortices = 0;
+			num_pushers = 0;
+			const auto add_vortex = [&] (float x, float y, float f) {
+				m.vortices[num_vortices++] = { .position = { x, y }, .force = f };
+			};
+			const auto add_pusher = [&] (float x, float y, float f) {
+				m.pushers[num_pushers++] = { .position = { x, y }, .force = f };
+			};
 
-			m.pushers[0] = { .position = { w * 0.7, h * 0.5 }, .force = 150 * sin(sec * 1.5f) };
-			num_pushers = 1;
+			add_vortex(w*0.5, h*0.5, 200);
+			add_vortex(w*0.2, h*0.1, 100*sin(sec));
+
+			add_pusher(w*0.7, h*0.5, 75 + 75*sin(sec * 1.5f));
 		}
 
 		{ // Update uniform data
-			glUseProgram(compute_program_id);
+			glUseProgram(compute_program.get());
 			constexpr GLint unif_loc_tick = 0;
 			constexpr GLint unif_loc_particle_lifetime = 1;
 			constexpr GLint unif_loc_num_vortices = 10;
@@ -212,9 +213,9 @@ struct Field_viz {
 		}
 
 		{ // Flush mapped buffer data
-			glFlushMappedNamedBufferRange(actors_buffer_id,
+			gl::flush_mapped_buffer_range(actors_buffer,
 					offsetof(GPU_actors, vortices), sizeof(GPU_actors::Vortex) * num_vortices);
-			glFlushMappedNamedBufferRange(actors_buffer_id,
+			gl::flush_mapped_buffer_range(actors_buffer,
 					offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
 		}
 
@@ -224,7 +225,7 @@ struct Field_viz {
 	}
 
 	void ensure_least_framebuffer_size (Resolution required_size) {
-		if (accum_fbo_size.x >= required_size.x || accum_fbo_size.y >= required_size.y)
+		if (accum_fbo_size.x >= required_size.x && accum_fbo_size.y >= required_size.y)
 			return;
 
 		constexpr Resolution max_size = { 3840, 2160 };
@@ -244,10 +245,10 @@ struct Field_viz {
 			}
 		}
 
-		accum_fbo.reset(gl::new_framebuffer());
+		accum_fbo = gl::make_framebuffer();
 		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
 
-		accum_texture.reset(gl::new_texture());
+		accum_texture = gl::make_texture();
 		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -273,7 +274,7 @@ struct Field_viz {
 		}
 
 		{
-			glUseProgram(render_program_id);
+			glUseProgram(render_program.get());
 			constexpr GLint unif_loc_grid_size = 0;
 			constexpr GLint unif_loc_scale = 2;
 
@@ -284,7 +285,7 @@ struct Field_viz {
 			glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
 		}
 
-		glBindVertexArray(lines_vao_id);
+		glBindVertexArray(lines_vao.get());
 		glDrawArrays(GL_LINES, 0, 2 * total_particles());
 
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, accum_fbo.get());
@@ -292,10 +293,11 @@ struct Field_viz {
 		glBlitFramebuffer(0, 0, res.x, res.y, 0, 0, res.x, res.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	}
 };
-static Deferred_init_unchecked<Field_viz> global_fieldviz;
-
 
 // ============================= Shallow free function API =============================
+
+static Deferred_init<Context> global_render_context;
+static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
 void init (unsigned w, unsigned h, Config cfg)
 {

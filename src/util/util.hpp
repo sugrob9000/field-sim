@@ -13,8 +13,6 @@
 #include <utility>
 using std::size_t;
 
-#ifndef NDEBUG
-
 template <typename First, typename... Rest> void debug_expr_
 (const char* prefix, [[maybe_unused]] const char* delim, First&& first, Rest&&... rest)
 {
@@ -25,13 +23,6 @@ template <typename First, typename... Rest> void debug_expr_
 }
 #define DEBUG_EXPR(...) debug_expr_(#__VA_ARGS__" = ", ", ", __VA_ARGS__)
 #define DEBUG_EXPR_MULTILINE(...) debug_expr_(#__VA_ARGS__":\n", "\n", __VA_ARGS__)
-
-#else
-
-#define DEBUG_EXPR(...)
-#define DEBUG_EXPR_MULTILINE(...)
-
-#endif /* NDEBUG */
 
 #if defined(__GNUC__) || defined(__clang__)
 #define DO_PRAGMA(X) _Pragma(#X)

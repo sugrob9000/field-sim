@@ -9,19 +9,7 @@
 #include <string_view>
 
 namespace glsl {
-/*
- * Shorthands for the two common cases.
- *  - A single fragment shader source & a single vertex shader source
- *  - A single compute shader source
- * These functions compile and dispose of shader objects properly.
- */
-GLuint make_program_frag_vert (std::string_view frag_path, std::string_view vert_path);
-GLuint make_program_compute (std::string_view comp_path);
 
-/*
- * Management of shader objects. RAII is more useful for shaders, because they can be
- * disposed of after being linked into a program, much like object files
- */
 enum class Shader_type: GLenum {
 	fragment = GL_FRAGMENT_SHADER,
 	vertex = GL_VERTEX_SHADER,
@@ -33,24 +21,29 @@ enum class Shader_type: GLenum {
 
 namespace detail {
 struct Shader_deleter { void operator() (GLuint id) { glDeleteShader(id); } };
+struct Program_deleter { void operator() (GLuint id) { glDeleteProgram(id); } };
 }
-using Shader = Unique_handle<GLuint, detail::Shader_deleter, 0>;
 
-Shader shader_from_file (Shader_type, std::string_view file_path);
-Shader shader_from_string (Shader_type, std::string_view source);
+struct Shader: Unique_handle<GLuint, detail::Shader_deleter, 0> {
+	static Shader from_file (Shader_type, std::string_view file_path);
+	static Shader from_source (Shader_type, std::string_view source);
+};
 
-/*
- * Management of shader programs. RAII is less useful because shader programs
- * are likely to live for as long as the rendering engine does, so it's manual here
- */
-GLuint link_program (std::span<const Shader>);
-void delete_program (GLuint);
+struct Program: Unique_handle<GLuint, detail::Program_deleter, 0> {
+	/* The general case: an arbitrary collection of shader objects */
+	explicit Program (std::span<const Shader>);
+	using Unique_handle::Unique_handle;
 
-/*
- * Get a non-portable string of printable characters in the output of glGetProgramBinary.
- * Nvidia drivers at least include a high-level assembly listing in there
- */
-std::string get_printable_program_internals (GLuint);
+	/* Shorthands for the two common cases */
+	static Program from_frag_vert (std::string_view frag_path, std::string_view vert_path);
+	static Program from_compute (std::string_view comp_path);
+
+	/*
+	 * Get a non-portable string of printable characters in the output of glGetProgramBinary.
+	 * Nvidia drivers at least include a high-level assembly listing in there.
+	 */
+	std::string get_printable_internals () const;
+};
 
 } /* namespace */
 

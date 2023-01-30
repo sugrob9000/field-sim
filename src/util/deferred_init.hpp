@@ -10,7 +10,9 @@
  * Wrappers for in-place deferred initialization: allocate the space up front,
  * but construct and destruct the object explicitly and at any chosen point.
  * Mostly intended for global variables, to avoid static initialization order fiasco,
- * but could be useful for data members also
+ * but could be useful for data members also.
+ *
+ * The checked version is essentially std::optional, but with clearer intent
  */
 
 template <typename T> class Deferred_init_unchecked {

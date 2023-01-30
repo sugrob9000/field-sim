@@ -9,35 +9,26 @@ using glm::vec2, glm::vec3, glm::vec4;
 using glm::mat2, glm::mat3, glm::mat4;
 
 /*
- * Format a GLM vector with fmt in the format "(x, ...)",
- * reusing format specifiers of the underlying type, for example
+ * Format a GLM vector like "(0.0, 1.0, 2.0)"
+ * reusing format specifiers of the underlying type, for example:
  *
  *   fmt::format("{:#x}", glm::vec<3,int>(100,200,300)) -> "(0x64, 0xc8, 0x12c)"
  */
 template <int N, typename S, glm::qualifier Q>
-struct fmt::formatter<glm::vec<N,S,Q>>: formatter<S> {
+class fmt::formatter<glm::vec<N,S,Q>>: public formatter<S> {
+	constexpr static auto opening = FMT_STRING("(");
+	constexpr static auto joiner = FMT_STRING(", ");
+	constexpr static auto closing = FMT_STRING(")");
+public:
 	template <typename Context> auto format (const glm::vec<N,S,Q>& v, Context& ctx) const {
-		const auto put = [&ctx] (char c) { return *ctx.out()++ = c; };
-		put('(');
-		for (int i = 0; i < N-1; i++) {
-			this->formatter<S>::format(v[i], ctx);
-			put(',');
-			put(' ');
+		format_to(ctx.out(), opening);
+		for (int i = 0; i+1 < N; i++) {
+			formatter<S>::format(v[i], ctx);
+			format_to(ctx.out(), joiner);
 		}
-		this->formatter<S>::format(v[N-1], ctx);
-		return put(')');
+		formatter<S>::format(v[N-1], ctx);
+		return format_to(ctx.out(), closing);
 	}
 };
-
-/*
- * Allow making structured bindings on GLM vectors, for example
- *   auto [x, y] = decompose(my_vec2)
- */
-template <int N, typename S, glm::qualifier Q> auto decompose (const glm::vec<N,S,Q>& v)
-{
-	if constexpr (N == 2) return std::tie(v.x, v.y);
-	if constexpr (N == 3) return std::tie(v.x, v.y, v.z);
-	if constexpr (N == 4) return std::tie(v.x, v.y, v.z, v.w);
-}
 
 #endif /* MATH_HPP */

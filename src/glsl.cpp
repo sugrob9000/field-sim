@@ -12,8 +12,10 @@ constexpr static const char shader_prologue[] =
 	"#extension GL_ARB_explicit_uniform_location: require\n"
 	"#extension GL_ARB_shading_language_include: require\n";
 
-static GLuint shader_compile (Shader_type type,
-                              std::string src, // needs 0-termination, so owning
+constexpr static const char source_dir[] = "shader/";
+
+static Shader compile_shader (Shader_type type,
+                              std::string src,
                               std::string_view display_path)
 {
 	GLuint id = glCreateShader(static_cast<GLenum>(type));
@@ -34,12 +36,7 @@ static GLuint shader_compile (Shader_type type,
 		FATAL("Shader {} failed to compile. Log:\n{}", display_path, log);
 	}
 
-	return id;
-}
-
-Shader shader_from_string (Shader_type type, std::string_view source)
-{
-	return Shader{shader_compile(type, std::string{source}, "<source string>")};
+	return Shader(id);
 }
 
 // ============================= Loading shader from file =============================
@@ -52,40 +49,36 @@ Shader shader_from_string (Shader_type type, std::string_view source)
 static std::optional<std::string> try_get_include_filename (std::string_view line)
 {
 	constexpr char keyword[] = "#include";
-	constexpr size_t keyword_len = sizeof(keyword)-1; // exclude trailing \0
+	constexpr size_t keyword_len = std::size(keyword)-1; // exclude trailing 0
+	constexpr int (*isspace) (int) = std::isspace; // resolve overload
 
 	if (line.size() <= keyword_len+1
 	|| line.rfind(keyword, 0) != 0
 	|| !std::isspace(line[keyword_len]))
-		return std::nullopt;
+		return {};
 
-	size_t begin = keyword_len+1;
-	// skip whitespace
-	while (begin < line.size() && std::isspace(line[begin]))
-		begin++;
+	// find next non-whitespace
+	auto it = std::find_if_not(line.begin() + keyword_len + 1, line.end(), isspace);
+	if (it == line.end())
+		return {};
 
-	size_t end = begin + 1;
-	if (line[begin] == '\"') {
-		// find a matching quote (if there isn't one, use EOL, whatever)
-		begin++;
-		while (end < line.size() && line[end] != '\"')
-			end++;
-	} else {
-		// find next whitespace or EOL
-		while (end < line.size() && !std::isspace(line[end]))
-			end++;
-	}
-
-	return std::string(line.data()+begin, line.data()+end);
+	if (*it == '\"')
+		return std::string(it+1, std::find(it+1, line.end(), '\"'));
+	else
+		return std::string(it, std::find_if(it, line.end(), isspace));
 }
 
-static void append_line_directive (std::string& src, int line_nr,
+static void append_line_directive (std::string& src, unsigned long line_nr,
                                    [[maybe_unused]] std::string_view name)
 {
-	src += fmt::format(FMT_STRING("#line {} \"{}\"\n"), line_nr, name);
+		fmt::format_to(std::back_inserter(src),
+#if 1
+				FMT_STRING("#line {} \"{}{}\"\n"), line_nr, source_dir, name
+#else
+				FMT_STRING("#line {}\n"), line_nr
+#endif
+				);
 }
-
-constexpr static const char source_dir[] = "shader/";
 
 static void append_file_contents (std::string& src,
                                   std::string_view original_path,
@@ -110,7 +103,7 @@ static void append_file_contents (std::string& src,
 
 	append_line_directive(src, 0, path);
 
-	int line_nr = 1;
+	unsigned long line_nr = 1;
 	std::string line;
 	for (; std::getline(f, line); line_nr++) {
 		if (auto target = try_get_include_filename(line)) {
@@ -124,16 +117,21 @@ static void append_file_contents (std::string& src,
 	}
 }
 
-Shader shader_from_file (Shader_type type, std::string_view file_path)
+Shader Shader::from_file (Shader_type type, std::string_view file_path)
 {
 	std::string source;
 	append_file_contents(source, file_path, file_path);
-	return Shader{shader_compile(type, source, file_path)};
+	return compile_shader(type, std::move(source), file_path);
+}
+
+Shader Shader::from_source (Shader_type type, std::string_view source)
+{
+	return compile_shader(type, std::string{source}, "<source string>");
 }
 
 // ============================== Loading programs: core ==============================
 
-GLuint link_program (std::span<const Shader> shaders)
+GLuint link_program_low (std::span<const Shader> shaders)
 {
 	if (shaders.empty())
 		FATAL("Tried to link a program without any shaders");
@@ -161,22 +159,35 @@ GLuint link_program (std::span<const Shader> shaders)
 	return program_id;
 }
 
-void delete_program (GLuint id)
+Program::Program (std::span<const Shader> shaders)
+	: Unique_handle(link_program_low(shaders)) { }
+
+Program Program::from_frag_vert (std::string_view frag_path, std::string_view vert_path)
 {
-	glDeleteProgram(id);
+	Shader shaders[] = {
+		Shader::from_file(Shader_type::fragment, frag_path),
+		Shader::from_file(Shader_type::vertex, vert_path),
+	};
+	return Program(shaders);
 }
 
-std::string get_printable_program_internals (GLuint program_id)
+Program Program::from_compute (std::string_view compute_path)
+{
+	Shader shader[] = { Shader::from_file(Shader_type::compute, compute_path) };
+	return Program(shader);
+}
+
+std::string Program::get_printable_internals () const
 {
 	int length = 0;
-	glGetProgramiv(program_id, GL_PROGRAM_BINARY_LENGTH, &length);
+	glGetProgramiv(this->get(), GL_PROGRAM_BINARY_LENGTH, &length);
 
 	auto buffer = std::make_unique<char[]>(length);
 	char* ptr = buffer.get();
 
 	GLsizei real_length;
 	GLenum bin_format;
-	glGetProgramBinary(program_id, length, &real_length, &bin_format, ptr);
+	glGetProgramBinary(this->get(), length, &real_length, &bin_format, ptr);
 
 	// Filter out unprintable characters and hope the result is useful, godspeed
 	std::string result;
@@ -185,23 +196,6 @@ std::string get_printable_program_internals (GLuint program_id)
 			result.push_back(c);
 	}
 	return result;
-}
-
-// ========================= Linking programs: small helpers =========================
-
-GLuint make_program_frag_vert (std::string_view frag_path, std::string_view vert_path)
-{
-	Shader shaders[] = {
-		shader_from_file(Shader_type::fragment, frag_path),
-		shader_from_file(Shader_type::vertex, vert_path),
-	};
-	return link_program(shaders);
-}
-
-GLuint make_program_compute (std::string_view comp_path)
-{
-	Shader shader[] = { shader_from_file(Shader_type::compute, comp_path) };
-	return link_program(shader);
 }
 
 } // namespace
