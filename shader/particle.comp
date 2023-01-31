@@ -11,7 +11,8 @@ struct Vortex {
 
 struct Pusher {
 	vec2 position;
-	float force; float pad0;
+	float force;
+	float pad0;
 };
 
 layout (std140, binding = 0) uniform ubo_actors {
@@ -24,7 +25,7 @@ layout (location = 1) uniform uint particle_lifetime = 240;
 layout (location = 10) uniform uint num_vortices;
 layout (location = 11) uniform uint num_pushers;
 
-#define MAX_VELOCITY 2
+#define MAX_VELOCITY 5
 vec2 velocity_at (vec2 p)
 {
 	vec2 vel = vec2(0);

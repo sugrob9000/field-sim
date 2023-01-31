@@ -38,6 +38,11 @@ inline Vertex_array make_vertex_array () { GLuint id; glGenVertexArrays(1, &id);
 
 // ================================= Mapping buffers ================================= */
 
+template <typename T> T* map_buffer_as (const Buffer& buffer, GLenum access)
+{
+	return start_lifetime_as<T>(glMapNamedBuffer(buffer.get(), access));
+}
+
 template <typename T> T* map_buffer_range_as
 (const Buffer& buffer, size_t offs_bytes, size_t len_bytes, GLbitfield access)
 {
