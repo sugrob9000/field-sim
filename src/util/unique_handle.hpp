@@ -12,12 +12,19 @@
  *
  * TODO: noexcept correctness
  */
-template <std::integral Id, typename Deleter, Id null_handle = 0>
+
+namespace detail {
+/*
+ * The types for functions and function pointers are not stateless, because the type
+ * only has the signature, which is not enough information for a call
+ */
+template <typename T, typename Id> concept Stateless_deleter
+	= std::is_invocable_v<T, Id> && std::is_empty_v<T>
+	&& !std::is_pointer_v<T> && !std::is_function_v<T>;
+}
+
+template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = 0>
 class Unique_handle {
-	static_assert(!std::is_pointer_v<Deleter> && !std::is_function_v<Deleter>,
-			"The types for functions and function pointers are not monostate: "
-			"they only encode the signature, which is not enough information to call them");
-	static_assert(std::is_empty_v<Deleter>, "Unique_handle only supports stateless deleters");
 	Id id = null_handle;
 	[[nodiscard]] Id disown () {
 		Id result = id;

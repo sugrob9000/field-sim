@@ -107,13 +107,11 @@ constexpr static const char shader_prologue[] =
 	"#extension GL_ARB_explicit_uniform_location: require\n"
 	"#extension GL_ARB_shading_language_include: require\n";
 
-static Shader compile_shader (Shader_type type,
-                              std::string src,
-                              std::string_view display_path)
+static Shader compile_shader (Shader_type type, std::string src, std::string_view name)
 {
 	GLuint id = glCreateShader(static_cast<GLenum>(type));
 	if (id == 0)
-		FATAL("Shader {}: failed to allocate shader object", display_path);
+		FATAL("Shader {}: failed to allocate shader object", name);
 
 	const char* lines[] = { shader_prologue, src.c_str() };
 	glShaderSource(id, std::size(lines), lines, nullptr);
@@ -126,7 +124,7 @@ static Shader compile_shader (Shader_type type,
 		glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
 		std::string log(log_length, '\0');
 		glGetShaderInfoLog(id, log_length, &log_length, log.data());
-		FATAL("Shader {} failed to compile. Log:\n{}", display_path, log);
+		FATAL("Shader {} failed to compile. Log:\n{}", name, log);
 	}
 
 	return Shader(id);

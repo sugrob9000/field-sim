@@ -3,7 +3,6 @@
 #include "math.hpp"
 #include "util/deferred_init.hpp"
 #include "util/util.hpp"
-#include <bit>
 #include <iostream>
 
 using Resolution = glm::vec<2, unsigned>;
@@ -112,8 +111,8 @@ struct Field_viz {
 	gl::Buffer particles_buffer;
 	gl::Vertex_array lines_vao;
 
-	glsl::Program render_program;
-	glsl::Program compute_program;
+	glsl::Program draw_particles_program;
+	glsl::Program update_particles_program;
 
 	// For a cooler effect, we paint on top of what was drawn on the previous frame.
 	// For the contents of the framebuffer to be well-defined at frame start, we have
@@ -167,8 +166,8 @@ struct Field_viz {
 			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
 			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
 
-			render_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
-			compute_program = glsl::Program::from_compute("particle.comp");
+			draw_particles_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
+			update_particles_program = glsl::Program::from_compute("particle.comp");
 		}
 
 		gl::poll_errors_and_die("field viz init");
@@ -201,7 +200,7 @@ struct Field_viz {
 		}
 
 		{ // Update uniform data
-			glUseProgram(compute_program.get());
+			glUseProgram(update_particles_program.get());
 			constexpr GLint unif_loc_tick = 0;
 			constexpr GLint unif_loc_particle_lifetime = 1;
 			constexpr GLint unif_loc_num_vortices = 10;
@@ -212,12 +211,10 @@ struct Field_viz {
 			glUniform1ui(unif_loc_num_pushers, num_pushers);
 		}
 
-		{ // Flush mapped buffer data
-			gl::flush_mapped_buffer_range(actors_buffer,
-					offsetof(GPU_actors, vortices), sizeof(GPU_actors::Vortex) * num_vortices);
-			gl::flush_mapped_buffer_range(actors_buffer,
-					offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
-		}
+		gl::flush_mapped_buffer_range(actors_buffer,
+				offsetof(GPU_actors, vortices), sizeof(GPU_actors::Vortex) * num_vortices);
+		gl::flush_mapped_buffer_range(actors_buffer,
+				offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
 
 		glDispatchCompute(particle_grid.x, particle_grid.y, 1);
 
@@ -274,7 +271,7 @@ struct Field_viz {
 		}
 
 		{
-			glUseProgram(render_program.get());
+			glUseProgram(draw_particles_program.get());
 			constexpr GLint unif_loc_grid_size = 0;
 			constexpr GLint unif_loc_scale = 2;
 

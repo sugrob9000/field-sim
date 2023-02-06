@@ -21,7 +21,7 @@ layout (std140, binding = 0) uniform ubo_actors {
 };
 
 layout (location = 0) uniform uint current_tick;
-layout (location = 1) uniform uint particle_lifetime = 240;
+layout (location = 1) uniform uint particle_lifetime;
 layout (location = 10) uniform uint num_vortices;
 layout (location = 11) uniform uint num_pushers;
 
