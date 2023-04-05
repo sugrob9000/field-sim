@@ -13,6 +13,7 @@
  * but could be useful for data members also.
  *
  * The checked version is essentially std::optional, but with clearer intent
+ * and no copy- or move-construction or -assignment at all
  */
 
 template <typename T> class Deferred_init_unchecked {

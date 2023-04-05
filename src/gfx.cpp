@@ -3,7 +3,6 @@
 #include "math.hpp"
 #include "util/deferred_init.hpp"
 #include "util/util.hpp"
-#include <iostream>
 
 using Resolution = glm::vec<2, unsigned>;
 
@@ -98,7 +97,7 @@ struct Context {
 
 struct Field_viz {
 	Resolution particle_grid;
-	unsigned total_particles () const { return particle_grid.x * particle_grid.y; };
+    unsigned total_particles () const { return particle_grid.x * particle_grid.y; }
 
 	unsigned current_tick = 0;
 
@@ -128,8 +127,8 @@ struct Field_viz {
 	// the format of which is one `GPU_actors` struct
 	// There are vortices (clockwise with force<0) and pushers (pullers when force<0)
 	struct GPU_actors {
-		static constexpr int max_vortices = 64;
-		static constexpr int max_pushers = 64;
+		static constexpr int max_vortices = 16;
+		static constexpr int max_pushers = 16;
 		struct alignas(16) Vortex { vec2 position; float force; };
 		struct alignas(16) Pusher { vec2 position; float force; };
 		Vortex vortices[max_vortices];
@@ -155,7 +154,7 @@ struct Field_viz {
 			glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(vec2), (const void*) 0);
 		}
 
-		{ // Shaders, SSBOs and UBOs
+		{ // SSBOs and UBOs
 			actors_buffer = gl::make_buffer();
 			glNamedBufferStorage(actors_buffer.get(), sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
@@ -165,10 +164,10 @@ struct Field_viz {
 
 			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
 			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
-
-			draw_particles_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
-			update_particles_program = glsl::Program::from_compute("particle.comp");
 		}
+
+		draw_particles_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
+		update_particles_program = glsl::Program::from_compute("particle.comp");
 
 		gl::poll_errors_and_die("field viz init");
 	}
@@ -238,7 +237,7 @@ struct Field_viz {
 				accum_fbo_size[i] = required_size[i];
 			} else {
 				unsigned next_po2 = 1u << std::bit_width(required_size[i]);
-				accum_fbo_size[i] = std::clamp(accum_fbo_size[i], next_po2, max_size[i]);
+				accum_fbo_size[i] = glm::clamp(accum_fbo_size[i], next_po2, max_size[i]);
 			}
 		}
 

@@ -4,13 +4,12 @@
 #include <cassert>
 #include <concepts>
 #include <type_traits>
+#include <utility>
 
 /*
  * Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
  * necessarily with one possible "null" value and a stateless deleter.
  * (Neither an additional bool nor the deleter are stored.)
- *
- * TODO: noexcept correctness
  */
 
 namespace detail {
@@ -23,7 +22,7 @@ template <typename T, typename Id> concept Stateless_deleter
 	&& !std::is_pointer_v<T> && !std::is_function_v<T>;
 }
 
-template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = 0>
+template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
 class Unique_handle {
 	Id id = null_handle;
 	[[nodiscard]] Id disown () {
@@ -35,13 +34,13 @@ public:
 	using value_type = Id;
 	using deleter_type = Deleter;
 
-	Unique_handle () { }
-	Unique_handle (Id id_): id{ id_ } { }
+	Unique_handle () = default;
+	explicit Unique_handle (Id id_): id{ id_ } { }
 	Unique_handle (const Unique_handle&) = delete;
-	Unique_handle (Unique_handle&& other): id{ other.disown() } { }
-	Unique_handle& operator= (Id id_) { this->reset(id_); }
+	Unique_handle (Unique_handle&& other) noexcept: id{ other.disown() } { }
+	Unique_handle& operator= (Id id_) { this->reset(id_); return *this; }
 	Unique_handle& operator= (const Unique_handle&) = delete;
-	Unique_handle& operator= (Unique_handle&& other) {
+	Unique_handle& operator= (Unique_handle&& other) noexcept {
 		if (this != &other) {
 			(void) release();
 			id = other.disown();

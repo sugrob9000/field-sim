@@ -1,0 +1,8 @@
+-clang-diagnostic-unused-command-line-argument
+bugprone-*
+-bugprone-narrowing-conversions
+-bugprone-easily-swappable-parameters
+clang-analyzer-*
+-clang-analyzer-security.*
+-*osx.*
+

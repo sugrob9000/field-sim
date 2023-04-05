@@ -1,7 +1,6 @@
 #ifndef MATH_HPP
 #define MATH_HPP
 
-#include "util/util.hpp"
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 

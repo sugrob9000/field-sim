@@ -61,6 +61,7 @@ inline void unmap_buffer (const Buffer& buffer)
 	glUnmapNamedBuffer(buffer.get());
 }
 
+
 /* ========================== Shader buffer bindings ========================== */
 /*
  * This file needs to know about all binding point uses, which makes some sense because

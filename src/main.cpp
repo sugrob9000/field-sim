@@ -1,8 +1,6 @@
 #include "gfx.hpp"
-#include "util/util.hpp"
 #include <chrono>
 #include <thread>
-#include <vector>
 
 namespace {
 struct Input_state {
@@ -14,28 +12,28 @@ struct Input_state {
 		for (SDL_Event event; SDL_PollEvent(&event); ) {
 			gfx::handle_sdl_event(event);
 			switch (event.type) {
-			case SDL_QUIT: should_quit = true; break;
-			case SDL_KEYDOWN:
-				switch (event.key.keysym.sym) {
-				case SDLK_q: should_quit = true; break;
-				case SDLK_c: should_clear_frame ^= 1; break;
-				case SDLK_f: should_freeze_field ^= 1; break;
-				case SDLK_d:
-					if (event.key.keysym.mod & KMOD_SHIFT)
-						asm("int3":::);
+				case SDL_QUIT: should_quit = true; break;
+				case SDL_KEYDOWN:
+					switch (event.key.keysym.sym) {
+						case SDLK_q: should_quit = true; break;
+						case SDLK_c: should_clear_frame ^= 1; break;
+						case SDLK_f: should_freeze_field ^= 1; break;
+						case SDLK_d:
+							if (event.key.keysym.mod & KMOD_SHIFT)
+								asm("int3":::);
+						break;
+					}
 					break;
-				}
-				break;
 			}
 		}
 		return *this;
 	}
 };
 
-static void wait_fps (int fps)
+void wait_fps (int fps)
 {
 	static auto next = std::chrono::steady_clock::now();
-	next += std::chrono::duration<long, std::micro>{ 1000'000 / fps };
+	next += std::chrono::microseconds{ 1000'000 / fps };
 	std::this_thread::sleep_until(next);
 }
 } // anon namespace

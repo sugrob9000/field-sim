@@ -7,13 +7,13 @@
 
 #include <cassert>
 #include <cstddef>
-#include <fmt/core.h>
 #include <fmt/format.h>
 #include <type_traits>
 #include <utility>
 using std::size_t;
 
-template <typename First, typename... Rest> void debug_expr_
+namespace detail {
+template <typename First, typename... Rest> void debug_expr
 (const char* prefix, [[maybe_unused]] const char* delim, First&& first, Rest&&... rest)
 {
 	fmt::print(stderr, FMT_STRING("Debug: {}{}"), prefix, first);
@@ -21,8 +21,9 @@ template <typename First, typename... Rest> void debug_expr_
 	std::fputc('\n', stderr);
 	std::fflush(stderr);
 }
-#define DEBUG_EXPR(...) debug_expr_(#__VA_ARGS__" = ", ", ", __VA_ARGS__)
-#define DEBUG_EXPR_MULTILINE(...) debug_expr_(#__VA_ARGS__":\n", "\n", __VA_ARGS__)
+}
+#define DEBUG_EXPR(...) ::detail::debug_expr(#__VA_ARGS__" = ", ", ", __VA_ARGS__)
+#define DEBUG_EXPR_MULTILINE(...) ::detail::debug_expr(#__VA_ARGS__":\n", "\n", __VA_ARGS__)
 
 #if defined(__GNUC__) || defined(__clang__)
 #define DO_PRAGMA(X) _Pragma(#X)
@@ -32,7 +33,9 @@ template <typename First, typename... Rest> void debug_expr_
 #define PRAGMA_POISON(WORD)
 #endif
 
-inline void vcomplain_ (const char* prefix, fmt::string_view format, fmt::format_args args)
+namespace detail {
+
+inline void vcomplain (const char* prefix, fmt::string_view format, fmt::format_args args)
 {
 	std::fputs(prefix, stderr);
 	fmt::vprint(stderr, format, args);
@@ -41,20 +44,22 @@ inline void vcomplain_ (const char* prefix, fmt::string_view format, fmt::format
 }
 
 template <typename Fmt, typename... Args>
-void fatal_ [[noreturn]] (const Fmt& format, Args&&... args)
+void fatal [[noreturn]] (const Fmt& format, Args&&... args)
 {
-	vcomplain_("Fatal: ", format, fmt::make_format_args(args...));
+	vcomplain("Fatal: ", format, fmt::make_format_args(args...));
 	std::exit(1);
 }
 
 template <typename Fmt, typename... Args>
-void warning_ (const Fmt& f, Args&&... args)
+void message (const Fmt& f, Args&&... args)
 {
-	vcomplain_("Warning: ", f, fmt::make_format_args(args...));
+	vcomplain("Warning: ", f, fmt::make_format_args(args...));
 }
 
-#define FATAL(F, ...) fatal_(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
-#define WARNING(F, ...) warning_(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
+} // namespace detail
+
+#define FATAL(F, ...) ::detail::fatal(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
+#define WARNING(F, ...) ::detail::message(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
 
 /*
  * A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
