@@ -5,7 +5,27 @@ if(NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL Release)
+	message(STATUS "LTO enabled")
+	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
+
+option(ENABLE_CLANG_TIDY OFF)
+if(ENABLE_CLANG_TIDY)
+	find_program(CLANG_TIDY clang-tidy)
+	if(CLANG_TIDY)
+		file(STRINGS clang-tidy-checks.txt checks)
+		list(JOIN checks "," checks-joined)
+		set_property(TARGET ${exec} PROPERTY
+			CXX_CLANG_TIDY ${CLANG_TIDY}
+			--quiet
+			--header-filter="^${CMAKE_SOURCE_DIR}/${src-dir}"  # shut up about libraries
+			--checks=${checks-joined}
+			-p ${CMAKE_BINARY_DIR})
+	endif()
+endif()
 
 set(src-dir src)
 set(libsrc-dir libsrc)
@@ -24,21 +44,6 @@ add_subdirectory(${libsrc-dir} EXCLUDE_FROM_ALL)
 file(GLOB_RECURSE src-files CONFIGURE_DEPENDS ${src-dir}/*.cpp ${src-dir}/*.hpp)
 add_executable(${exec} ${src-files})
 
-option(ENABLE_CLANG_TIDY OFF)
-if(ENABLE_CLANG_TIDY)
-	find_program(CLANG_TIDY clang-tidy)
-	if(CLANG_TIDY)
-  	file(STRINGS clang-tidy-checks.txt checks)
-  	list(JOIN checks "," checks-joined)
-		set_property(TARGET ${exec} PROPERTY
-			CXX_CLANG_TIDY ${CLANG_TIDY}
-			--quiet
-    	--header-filter="^${CMAKE_SOURCE_DIR}/${src-dir}"  # shut up about libraries
-			--checks=${checks-joined}
-			-p ${CMAKE_BINARY_DIR})
-	endif()
-endif()
-
 # Main app includes relative to the system include path (<SDL2/SDL.h>, not <SDL.h> etc.),
 # so we do not use here ${..._INCLUDE_DIR} that find_package populates.
 # 3rd-party library sources in ${libsrc-dir} have their own conventions about this,
@@ -56,6 +61,8 @@ target_link_libraries(${exec}
 	fmt imgui)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+	message(STATUS "Enabling GCC-specific configuration")
+
 	set(cxx-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
 	target_compile_options(${exec} PRIVATE ${cxx-warnings})
 	target_compile_options(${exec} PRIVATE -fmax-errors=1 -fno-exceptions -fno-rtti)
@@ -66,7 +73,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
 		target_link_options(${exec} PRIVATE -fsanitize=undefined)
 	endif()
 else()
-	message(WARNING "Compiler other than GCC - will miss some options")
+	message(STATUS "Compiler other than GCC - will miss some options")
 endif()
 
 add_custom_target(run

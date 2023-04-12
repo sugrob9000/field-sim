@@ -124,9 +124,9 @@ static Shader compile_shader (Shader_type type, const std::string& src, string_v
 	if (!compile_success) {
 		int log_length = 0;
 		glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
-		std::string log(log_length, '\0');
-		glGetShaderInfoLog(id, log_length, &log_length, log.data());
-		FATAL("Shader {} failed to compile. Log:\n{}", name, log);
+		auto log = std::make_unique_for_overwrite<char[]>(log_length+1);
+		glGetShaderInfoLog(id, log_length, &log_length, log.get());
+		FATAL("Shader {} failed to compile. Log:\n{}", name, log.get());
 	}
 
 	return Shader(id);
@@ -162,9 +162,9 @@ static GLuint link_program_low (std::span<const Shader> shaders)
 	if (!link_success) {
 		int log_length = 0;
 		glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
-		std::string log(log_length+1, '\0');
-		glGetProgramInfoLog(id, log_length, &log_length, log.data());
-		FATAL("Program with id {} failed to link. Log:\n{}", id, log);
+		auto log = std::make_unique_for_overwrite<char[]>(log_length+1);
+		glGetProgramInfoLog(id, log_length, &log_length, log.get());
+		FATAL("Program with id {} failed to link. Log:\n{}", id, log.get());
 	}
 
 	return id;
@@ -193,16 +193,15 @@ std::string Program::get_printable_internals () const
 	int expected_length = 0;
 	glGetProgramiv(this->get(), GL_PROGRAM_BINARY_LENGTH, &expected_length);
 
-	const auto text_owner = std::make_unique<char[]>(expected_length);
-	char* const text = text_owner.get();
+	const auto text = std::make_unique_for_overwrite<char[]>(expected_length);
 
 	GLsizei real_length;
 	GLenum bin_format;
-	glGetProgramBinary(this->get(), expected_length, &real_length, &bin_format, text);
+	glGetProgramBinary(this->get(), expected_length, &real_length, &bin_format, text.get());
 
 	// Filter out unprintable characters and hope the result is useful, godspeed
 	std::string result;
-	for (char c: std::string_view{ text, text+real_length }) {
+	for (char c: std::string_view{ text.get(), text.get()+real_length }) {
 		if (c == '\t' || c == '\n' || (c >= 0x20 && c <= 0x7E))
 			result.push_back(c);
 	}

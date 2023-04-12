@@ -1,7 +1,7 @@
 #ifndef GL_HPP
 #define GL_HPP
 
-#include "util/unique_handle.hpp"
+#include "util/unique.hpp"
 #include "util/util.hpp"
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
@@ -20,10 +20,10 @@ void poll_errors_and_die (std::string_view tag);
 /* ========================== Basic OpenGL handle wrappers ========================== */
 
 namespace detail {
-struct Buffer_deleter { void operator() (GLuint id) { glDeleteBuffers(1, &id); } };
-struct Texture_deleter { void operator() (GLuint id) { glDeleteTextures(1, &id); } };
-struct FBO_deleter { void operator() (GLuint id) { glDeleteFramebuffers(1, &id); } };
-struct VAO_deleter { void operator() (GLuint id) { glDeleteVertexArrays(1, &id); } };
+struct Buffer_deleter { void operator() (GLuint id) const { glDeleteBuffers(1, &id); } };
+struct Texture_deleter { void operator() (GLuint id) const { glDeleteTextures(1, &id); } };
+struct FBO_deleter { void operator() (GLuint id) const { glDeleteFramebuffers(1, &id); } };
+struct VAO_deleter { void operator() (GLuint id) const { glDeleteVertexArrays(1, &id); } };
 }
 
 using Buffer = Unique_handle<GLuint, detail::Buffer_deleter, 0>;
