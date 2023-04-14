@@ -8,9 +8,9 @@
 #include <string_view>
 
 /*
- * Some OpenGL wrappers, where they make sense.
- * Interoperability with raw OpenGL calls is a goal and intended usage.
- * Exhaustive wrapping is a non-goal.
+ * Some OpenGL wrappers.
+ * Complete interoperability with raw OpenGL calls is intended.
+ * Exhaustive wrapping may not be.
  */
 namespace gl {
 
@@ -31,10 +31,12 @@ using Texture = Unique_handle<GLuint, detail::Texture_deleter, 0>;
 using Framebuffer = Unique_handle<GLuint, detail::FBO_deleter, 0>;
 using Vertex_array = Unique_handle<GLuint, detail::VAO_deleter, 0>;
 
-inline Buffer make_buffer () { GLuint id; glCreateBuffers(1, &id); return Buffer(id); }
-inline Texture make_texture () { GLuint id; glGenTextures(1, &id); return Texture(id); }
-inline Framebuffer make_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return Framebuffer(id); }
-inline Vertex_array make_vertex_array () { GLuint id; glGenVertexArrays(1, &id); return Vertex_array(id); }
+inline auto gen_texture () { GLuint id; glGenTextures(1, &id); return Texture(id); }
+inline auto gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return Framebuffer(id); }
+inline auto gen_vertex_array () { GLuint id; glGenVertexArrays(1, &id); return Vertex_array(id); }
+
+inline auto gen_buffer () { GLuint id; glGenBuffers(1, &id); return Buffer(id); }
+inline auto create_buffer () { GLuint id; glCreateBuffers(1, &id); return Buffer(id); }
 
 // ================================= Mapping buffers ================================= */
 

@@ -142,20 +142,24 @@ struct Field_viz {
 	Field_viz (Resolution particle_grid_size_): particle_grid { particle_grid_size_ }
 	{
 		{ // VBO
-			particles_buffer = gl::make_buffer();
-			glBindBuffer(GL_ARRAY_BUFFER, particles_buffer.get());
-			glBufferStorage(GL_ARRAY_BUFFER, 2*sizeof(vec2)*total_particles(), nullptr, 0);
+			particles_buffer = gl::create_buffer();
+			glNamedBufferStorage(particles_buffer.get(),
+					2*sizeof(vec2)*total_particles(), nullptr, 0);
 		}
 
 		{ // VAO & vertex format
-			lines_vao = gl::make_vertex_array();
+			lines_vao = gl::gen_vertex_array();
 			glBindVertexArray(lines_vao.get());
+
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(vec2), (const void*) 0);
+			glVertexAttribBinding(0, 0);
+			glVertexAttribFormat(0, 2, GL_FLOAT, false, 0);
+
+			glBindVertexBuffer(0, particles_buffer.get(), 0, sizeof(vec2));
 		}
 
 		{ // SSBOs and UBOs
-			actors_buffer = gl::make_buffer();
+			actors_buffer = gl::create_buffer();
 			glNamedBufferStorage(actors_buffer.get(), sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
 			actors_buffer_mapped = gl::map_buffer_range_as<GPU_actors>
@@ -241,10 +245,10 @@ struct Field_viz {
 			}
 		}
 
-		accum_fbo = gl::make_framebuffer();
+		accum_fbo = gl::gen_framebuffer();
 		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
 
-		accum_texture = gl::make_texture();
+		accum_texture = gl::gen_texture();
 		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
