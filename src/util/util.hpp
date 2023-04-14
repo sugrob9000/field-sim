@@ -1,5 +1,4 @@
-#ifndef UTIL_HPP
-#define UTIL_HPP
+#pragma once
 
 #ifndef FMT_ENFORCE_COMPILE_STRING
 #define FMT_ENFORCE_COMPILE_STRING 1
@@ -73,5 +72,3 @@ template <typename T> T* start_lifetime_as (void* p) requires std::is_trivial_v<
 	(void) *ptr; /* Tell the abstract machine that we require a T there */
 	return ptr;
 }
-
-#endif /* UTIL_HPP */

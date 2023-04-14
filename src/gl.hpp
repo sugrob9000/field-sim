@@ -1,5 +1,4 @@
-#ifndef GL_HPP
-#define GL_HPP
+#pragma once
 
 #include "util/unique.hpp"
 #include "util/util.hpp"
@@ -97,5 +96,3 @@ inline void bind_ssbo (SSBO_binding_point slot, const Buffer& buffer)
 }
 
 } /* namespace gl */
-
-#endif /* GL_HPP */

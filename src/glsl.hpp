@@ -1,5 +1,4 @@
-#ifndef GLSL_HPP
-#define GLSL_HPP
+#pragma once
 
 #include "util/unique.hpp"
 #include <GL/glew.h>
@@ -47,5 +46,3 @@ struct Program: Unique_handle<GLuint, detail::Program_deleter, 0> {
 };
 
 } /* namespace */
-
-#endif /* GLSL_HPP */

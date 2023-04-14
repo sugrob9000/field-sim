@@ -1,5 +1,4 @@
-#ifndef UTIL_UNIQUE_HPP
-#define UTIL_UNIQUE_HPP
+#pragma once
 
 #include <cassert>
 #include <concepts>
@@ -144,5 +143,3 @@ template <typename T> auto make_array_for_overwrite (size_t len)
 {
 	return Unique_array<T>(new T[len], len);
 }
-
-#endif /* UTIL_UNIQUE_HPP */

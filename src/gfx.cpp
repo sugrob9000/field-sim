@@ -97,7 +97,7 @@ struct Context {
 
 struct Field_viz {
 	Resolution particle_grid;
-    unsigned total_particles () const { return particle_grid.x * particle_grid.y; }
+	unsigned total_particles () const { return particle_grid.x * particle_grid.y; }
 
 	unsigned current_tick = 0;
 

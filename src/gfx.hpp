@@ -1,5 +1,4 @@
-#ifndef GFX_HPP
-#define GFX_HPP
+#pragma once
 
 #include "gl.hpp"
 
@@ -19,5 +18,3 @@ void present_frame ();
 void fieldviz_update ();
 void fieldviz_draw (bool should_clear);
 }
-
-#endif /* GFX_HPP */

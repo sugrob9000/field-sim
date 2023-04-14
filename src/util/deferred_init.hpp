@@ -1,5 +1,4 @@
-#ifndef UTIL_DEFERRED_INIT_HPP
-#define UTIL_DEFERRED_INIT_HPP
+#pragma once
 
 #include <cassert>
 #include <memory>
@@ -52,5 +51,3 @@ public:
 	}
 	T* operator-> () { return &this->operator*(); }
 };
-
-#endif /* UTIL_DEFERRED_INIT_HPP */

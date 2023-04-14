@@ -1,5 +1,4 @@
-#ifndef MATH_HPP
-#define MATH_HPP
+#pragma once
 
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
@@ -29,5 +28,3 @@ public:
 		return format_to(ctx.out(), closing);
 	}
 };
-
-#endif /* MATH_HPP */
