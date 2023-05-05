@@ -115,7 +115,7 @@ static Shader compile_shader (Shader_type type, const std::string& src, string_v
 {
 	GLuint id = glCreateShader(static_cast<GLenum>(type));
 	if (id == 0)
-		FATAL("Shader {}: failed to allocate shader object", name);
+		FATAL("Shader {}: failed to create shader object", name);
 
 	const char* lines[] = { shader_prologue, src.c_str() };
 	glShaderSource(id, std::size(lines), lines, nullptr);
@@ -153,7 +153,7 @@ static GLuint link_program_low (std::span<const Shader> shaders)
 
 	GLuint id = glCreateProgram();
 	if (id == 0)
-		FATAL("Failed to allocate shader program");
+		FATAL("Failed to create shader program");
 
 	for (const Shader& s: shaders) glAttachShader(id, s.get());
 	glLinkProgram(id);

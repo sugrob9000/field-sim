@@ -33,8 +33,7 @@ template <typename First, typename... Rest> void debug_expr
 #endif
 
 namespace detail {
-
-inline void vcomplain (const char* prefix, fmt::string_view format, fmt::format_args args)
+inline void vmessage (const char* prefix, fmt::string_view format, fmt::format_args args)
 {
 	std::fputs(prefix, stderr);
 	fmt::vprint(stderr, format, args);
@@ -43,22 +42,19 @@ inline void vcomplain (const char* prefix, fmt::string_view format, fmt::format_
 }
 
 template <typename Fmt, typename... Args>
-void fatal [[noreturn]] (const Fmt& format, Args&&... args)
+void message (const char* prefix, const Fmt& format, Args&&... args)
 {
-	vcomplain("Fatal: ", format, fmt::make_format_args(args...));
-	std::exit(1);
+	vmessage(prefix, format, fmt::make_format_args(std::forward<Args>(args)...));
 }
-
-template <typename Fmt, typename... Args>
-void message (const Fmt& f, Args&&... args)
-{
-	vcomplain("Warning: ", f, fmt::make_format_args(args...));
-}
-
 } // namespace detail
 
-#define FATAL(F, ...) ::detail::fatal(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
-#define WARNING(F, ...) ::detail::message(FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
+#define FATAL(F, ...) \
+	do { \
+		::detail::message("Fatal: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__); \
+		::std::exit(1); \
+	} while (false)
+#define WARNING(F, ...) ::detail::message("Warning: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
+#define MESSAGE(F, ...) ::detail::message("Info: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
 
 /*
  * A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)

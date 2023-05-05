@@ -70,6 +70,8 @@ struct Context {
 			glDebugMessageCallback(callback, nullptr);
 		}
 
+		MESSAGE("Renderer is '{}'", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+
 		gl::poll_errors_and_die("context init");
 
 		constexpr unsigned spacing = 2;
