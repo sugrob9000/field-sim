@@ -31,18 +31,16 @@ struct Shader: Unique_handle<GLuint, detail::Shader_deleter, 0> {
 struct Program: Unique_handle<GLuint, detail::Program_deleter, 0> {
 	using Unique_handle::Unique_handle;
 
-	/* The general case: an arbitrary collection of shader objects */
+	// General case: an arbitrary collection of shader objects
 	explicit Program (std::span<const Shader>);
 
-	/* Shorthands for the two common cases */
+	// Shorthands for the two common cases
 	static Program from_frag_vert (std::string_view frag_path, std::string_view vert_path);
 	static Program from_compute (std::string_view comp_path);
 
-	/*
-	 * Get a non-portable string of printable characters in the output of glGetProgramBinary.
-	 * Nvidia drivers at least include a high-level assembly listing in there
-	 */
+	// Get a non-portable string of printable characters in the output of glGetProgramBinary.
+	// Nvidia drivers at least include a high-level assembly listing in there
 	[[nodiscard]] std::string get_printable_internals () const;
 };
 
-} /* namespace */
+} // namespace gl

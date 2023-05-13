@@ -5,15 +5,13 @@
 #include <new>
 #include <utility>
 
-/*
- * Wrappers for in-place deferred initialization: allocate the space up front,
- * but construct and destruct the object explicitly and at any chosen point.
- * Mostly intended for global variables, to avoid static initialization order fiasco,
- * but could be useful for data members also.
- *
- * The checked version is essentially std::optional, but with clearer intent
- * and no copy- or move-construction or -assignment at all
- */
+// Wrappers for in-place deferred initialization: allocate the space up front,
+// but construct and destruct the object explicitly and at any chosen point.
+// Mostly intended for global variables, to avoid static initialization order fiasco,
+// but could be useful for data members also.
+//
+// The checked version is essentially std::optional, but with clearer intent
+// and no copy- or move-construction or -assignment at all
 
 template <typename T> class Deferred_init_unchecked {
 	alignas(T) char storage[sizeof(T)];

@@ -7,28 +7,25 @@
 #include <utility>
 
 namespace detail {
-/*
- * The types for functions and function pointers are not stateless, because the type
- * only has the signature, which is not enough information for a call.
- *
- * Example of a statless deleter:
- *
- * struct My_C_API_deleter {
- *   operator() (void* p) const { C_API_delete(p); }
- * };
- */
+// The types for functions and function pointers are not stateless, because the type
+// only has the signature, which is not enough information for a call.
+//
+// Example of a statless deleter:
+//
+// struct My_C_API_deleter {
+//   operator() (void* p) const { C_API_delete(p); }
+// };
 template <typename T, typename Id> concept Stateless_deleter
 	= std::is_empty_v<T> && !std::is_pointer_v<T> && !std::is_function_v<T>;
 }
 
-/*
- * Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
- * not just pointers, but still necessarily with one possible "null" value.
- *
- * A stateless deleter is required.
- * (Though nothing in theory prevents the implementation of stateful deleters.)
- * In the current implementation, nothing other than the underlying handle is stored.
- */
+// Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
+// not just pointers, but still necessarily with one possible "null" value.
+//
+// A stateless deleter is required.
+// (Though nothing in theory prevents the implementation of stateful deleters.)
+// In the current implementation, nothing other than the underlying handle is stored.
+
 template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
 class Unique_handle {
 	Id id = null_handle;
@@ -64,7 +61,7 @@ public:
 	}
 
 	[[nodiscard]] Id operator* () const { return this->get(); }
-	/* operator-> makes no sense, there are no indirection passthrough semantics */
+	// operator-> makes no sense, there are no indirection passthrough semantics
 
 	[[nodiscard]] Id get () const {
 		assert(id != null_handle);
@@ -82,15 +79,14 @@ public:
 };
 
 
-/*
- * Unique_array: wrapper over unique_ptr<T[]> + size.
- *
- * For when one needs a dynamic array without the ability to dynamically resize - and the
- * associated overhead, such as storing capacity or exponential allocation growth.
- * Can still change size via reset() or move-assignment.
- *
- * Over unique_ptr + size, also provides (some) iterator support and deep constness
- */
+// Unique_array: wrapper over unique_ptr<T[]> + size.
+//
+// For when one needs a dynamic array without the ability to dynamically resize - and the
+// associated overhead, such as storing capacity or exponential allocation growth.
+// Can still change size via reset() or move-assignment.
+//
+// Over unique_ptr + size, also provides (some) iterator support and deep constness
+
 template <typename T, detail::Stateless_deleter<T> Deleter = std::default_delete<T>>
 class Unique_array {
 	std::unique_ptr<T[]> storage{};
@@ -109,13 +105,10 @@ public:
 	Unique_array ();
 	void reset () { storage.reset(); len = 0; }
 
-	/*
-	 * `ptr` must point to an array of `len_` elements suitable for deallocation with T,
-	 * which is a tight invariant to have on the two parameters of a constructor.
-	 *
-	 * You should wrap this constructor in a bespoke `make_...` to maintain it,
-	 * or use `make_array`, which does that for `new[]/delete[]`
-	 */
+	// `ptr` must point to an array of `len_` elements suitable for deallocation with T,
+	// which is a tight invariant to have on the two parameters of a constructor.
+	// You should wrap this constructor in a bespoke `make_...` to maintain it,
+	// or use `make_array`, which does that for `new[]/delete[]`
 	Unique_array (T* ptr, size_t len_): storage(ptr), len{len_} {}
 	void reset (T* ptr, size_t len_) { storage.reset(ptr); len = len_; }
 

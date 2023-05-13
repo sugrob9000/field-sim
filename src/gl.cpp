@@ -36,4 +36,4 @@ void poll_errors_and_die (std::string_view tag)
 		FATAL("{} OpenGL error(s) reported during '{}'", num_errors, tag);
 }
 
-} // namespace
+} // namespace gl

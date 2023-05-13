@@ -358,4 +358,4 @@ void fieldviz_update ()
 	global_fieldviz->advance_simulation();
 }
 
-} // namespace
+} // namespace gfx

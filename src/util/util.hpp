@@ -20,7 +20,7 @@ template <typename First, typename... Rest> void debug_expr
 	std::fputc('\n', stderr);
 	std::fflush(stderr);
 }
-}
+} // namespace detail
 #define DEBUG_EXPR(...) ::detail::debug_expr(#__VA_ARGS__" = ", ", ", __VA_ARGS__)
 #define DEBUG_EXPR_MULTILINE(...) ::detail::debug_expr(#__VA_ARGS__":\n", "\n", __VA_ARGS__)
 
@@ -56,15 +56,13 @@ void message (const char* prefix, const Fmt& format, Args&&... args)
 #define WARNING(F, ...) ::detail::message("Warning: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
 #define MESSAGE(F, ...) ::detail::message("Info: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
 
-/*
- * A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
- * Cannot be made constexpr without compiler support, otherwise works
- */
+// A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
+// Cannot be made constexpr without compiler support, otherwise works
 template <typename T> T* start_lifetime_as (void* p) requires std::is_trivial_v<T>
 {
-	/* Start the lifetime of an array of bytes there */
+	// Start the lifetime of an array of bytes there
 	std::byte* const bytes = new (p) std::byte[sizeof(T)];
 	T* const ptr = reinterpret_cast<T*>(bytes);
-	(void) *ptr; /* Tell the abstract machine that we require a T there */
+	(void) *ptr; // Tell the abstract machine that we require a T there
 	return ptr;
 }

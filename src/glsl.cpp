@@ -8,7 +8,6 @@
 using std::string_view;
 
 namespace gl {
-
 // ============================= Shader sources from files =============================
 // A dumb implementation that supports #include, but leaves other preprocessing
 // directives to the driver, which means you cannot guard inclusion with #if and friends:
@@ -210,4 +209,4 @@ std::string Program::get_printable_internals () const
 	return result;
 }
 
-} // namespace
+} // namespace gl

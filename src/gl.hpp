@@ -6,10 +6,8 @@
 #include <SDL2/SDL.h>
 #include <string_view>
 
-/*
- * Some OpenGL wrappers, for better C++ compatibility.
- * Complete interoperability with raw OpenGL calls is intended. Exhaustive wrapping is not.
- */
+// Some OpenGL wrappers, for better C++ compatibility.
+// Complete interoperability with raw OpenGL calls is intended. Exhaustive wrapping is not.
 namespace gl {
 
 void poll_errors_and_warn (std::string_view tag);
@@ -17,25 +15,21 @@ void poll_errors_and_die (std::string_view tag);
 
 inline std::string_view get_string (GLenum id) { return reinterpret_cast<const char*>(glGetString(id)); }
 
-/* ========================== Basic OpenGL handle wrappers ========================== */
-/*
- * TODO: Gen* calls don't actually create valid OpenGL objects until the names returned
- * are bound to a target, meaning the Unique_handle objects returned by gl::gen* functions
- * may not represent actual objects even with a nontrivial ID.
- * This is the reason that e.g. gl::gen_texture does not take the texture target or any
- * other parameters, though it logically should.
- * glDelete* functions are specified to swallow invalid names silently, but it'd be
- * cleaner to get rid of gen* and make create* for all of this API; in some places it will
- * require eschewing non-DSA usage completely.
- */
+// ========================== Basic OpenGL handle wrappers ==========================
+// TODO: Gen* calls don't actually create valid OpenGL objects until the names returned
+// are bound to a target, meaning the Unique_handle objects returned by gl::gen* functions
+// may not represent actual objects even with a nontrivial ID.
+// This is the reason that e.g. gl::gen_texture does not take the texture target or any
+// other parameters, though it logically should.
+// glDelete* functions are specified to swallow invalid names silently, but it'd be
+// cleaner to get rid of gen* and make create* for all of this API; in some places it will
+// require eschewing non-DSA usage completely.
 
 namespace detail {
-/*
- * If the deleter is imported directly, `GL_delete_func` is `void(*)(GLsizei, GLuint*)`.
- * If it is imported by the loader via GetProcAddress, the name of the function
- * resolves to a variable, and `GL_delete_func` is `void(**)(GLsizei, GLuint*)`.
- * So, `GL_delete_func` has to be `auto`, and calling `*GL_delete_func` works either way.
- */
+// If the deleter is imported directly, `GL_delete_func` is `void(*)(GLsizei, GLuint*)`.
+// If it is imported by the loader via GetProcAddress, the name of the function
+// resolves to a variable, and `GL_delete_func` is `void(**)(GLsizei, GLuint*)`.
+// So, `GL_delete_func` has to be `auto`, and calling `*GL_delete_func` works either way.
 template <auto GL_delete_func> struct GL_obj_deleter {
 	void operator() (GLuint id) const noexcept { (*GL_delete_func)(1, &id); }
 };
@@ -63,7 +57,7 @@ inline auto create_texture (GLenum target)
 inline auto gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return Framebuffer(id); }
 inline auto gen_vertex_array () { GLuint id; glGenVertexArrays(1, &id); return Vertex_array(id); }
 
-// ================================= Mapping buffers ================================= */
+// ================================= Mapping buffers =================================
 
 template <typename T> T* map_buffer_as (const Buffer& buffer, GLenum access)
 {
@@ -89,17 +83,15 @@ inline void unmap_buffer (const Buffer& buffer)
 }
 
 
-/* ========================== Shader buffer bindings ========================== */
-/*
- * This file needs to know about all binding point uses, which makes some sense because
- *  a) they are a global resource
- *  b) shaders need to specify them as numbers which need to match the numbers here
- *     anyway, and there is no preprocessing for shaders in place to enforce this
- *
- * However, doing this limits the total amount of available bindings by the number
- * of simultaneous binding points, akin to only ever using one descriptor set in Vulkan
- * TODO: fix the above, maybe by replicating the descriptor set design
- */
+// ========================== Shader buffer bindings ========================== */
+// This file needs to know about all binding point uses, which makes some sense because
+//  a) they are a global resource
+//  b) shaders need to specify them as numbers which need to match the numbers here
+//     anyway, and there is no preprocessing for shaders in place to enforce this
+//
+// However, doing this limits the total amount of available bindings by the number
+// of simultaneous binding points, akin to only ever using one descriptor set in Vulkan
+// TODO: fix the above, maybe by replicating the descriptor set design
 
 enum class UBO_binding_point: GLenum {
 	// All uniform buffer binding points known in the program
@@ -121,4 +113,4 @@ inline void bind_ssbo (SSBO_binding_point slot, const Buffer& buffer)
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, static_cast<GLenum>(slot), buffer.get());
 }
 
-} /* namespace */
+} // namespace gl
