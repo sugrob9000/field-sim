@@ -26,22 +26,25 @@ inline std::string_view get_string (GLenum id) { return reinterpret_cast<const c
  * other parameters, though it logically should.
  * glDelete* functions are specified to swallow invalid names silently, but it'd be
  * cleaner to get rid of gen* and make create* for all of this API; in some places it will
- * requrie eschewing non-DSA usage completely.
+ * require eschewing non-DSA usage completely.
  */
 
 namespace detail {
-struct Buffer_deleter { void operator() (GLuint id) const { glDeleteBuffers(1, &id); } };
-struct Texture_deleter { void operator() (GLuint id) const { glDeleteTextures(1, &id); } };
-struct RBO_deleter { void operator() (GLuint id) const { glDeleteRenderbuffers(1, &id); } };
-struct FBO_deleter { void operator() (GLuint id) const { glDeleteFramebuffers(1, &id); } };
-struct VAO_deleter { void operator() (GLuint id) const { glDeleteVertexArrays(1, &id); } };
-}
-
-using Buffer = Unique_handle<GLuint, detail::Buffer_deleter, 0>;
-using Texture = Unique_handle<GLuint, detail::Texture_deleter, 0>;
-using Renderbuffer = Unique_handle<GLuint, detail::RBO_deleter, 0>;
-using Framebuffer = Unique_handle<GLuint, detail::FBO_deleter, 0>;
-using Vertex_array = Unique_handle<GLuint, detail::VAO_deleter, 0>;
+/*
+ * If the deleter is imported directly, `GL_delete_func` is `void(*)(GLsizei, GLuint*)`.
+ * If it is imported by the loader via GetProcAddress, the name of the function
+ * resolves to a variable, and `GL_delete_func` is `void(**)(GLsizei, GLuint*)`.
+ * So, `GL_delete_func` has to be `auto`, and calling `*GL_delete_func` works either way.
+ */
+template <auto GL_delete_func> struct GL_obj_deleter {
+	void operator() (GLuint id) const noexcept { (*GL_delete_func)(1, &id); }
+};
+} // namespace detail
+using Buffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteBuffers>, 0>;
+using Texture = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteTextures>, 0>;
+using Renderbuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteRenderbuffers>, 0>;
+using Framebuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteRenderbuffers>, 0>;
+using Vertex_array = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteVertexArrays>, 0>;
 
 inline auto gen_buffer () { GLuint id; glGenBuffers(1, &id); return Buffer(id); }
 inline auto create_buffer () { GLuint id; glCreateBuffers(1, &id); return Buffer(id); }
@@ -50,6 +53,13 @@ inline auto gen_renderbuffer () { GLuint id; glGenRenderbuffers(1, &id); return 
 inline auto create_renderbuffer () { GLuint id; glCreateRenderbuffers(1, &id); return Renderbuffer(id); }
 
 inline auto gen_texture () { GLuint id; glGenTextures(1, &id); return Texture(id); }
+inline auto create_texture (GLenum target)
+{
+	GLuint id;
+	glCreateTextures(target, 1, &id);
+	return Texture(id);
+}
+
 inline auto gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return Framebuffer(id); }
 inline auto gen_vertex_array () { GLuint id; glGenVertexArrays(1, &id); return Vertex_array(id); }
 
