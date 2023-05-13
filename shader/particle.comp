@@ -1,4 +1,7 @@
-layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+#define LOCAL_SIZE_X 32
+#define LOCAL_SIZE_Y 32
+#define GROUP_SIZE (LOCAL_SIZE_X * LOCAL_SIZE_Y)
+layout (local_size_x = LOCAL_SIZE_X, local_size_y = LOCAL_SIZE_Y, local_size_z = 1) in;
 
 struct Particle { vec2 front, back; };
 layout (std430, binding = 0) buffer SSBO_particles { Particle particles[]; };
@@ -48,16 +51,18 @@ vec2 velocity_at (vec2 p)
 
 void main ()
 {
-	uint id = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+	uint wg_index = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+	uint id = wg_index * GROUP_SIZE + gl_LocalInvocationIndex;
+
 	uint random = 1664525 * id + 1013904223;
 	random ^= (random << 13);
 	random ^= (random >> 17);
 	random ^= (random << 5);
 
-	// Reset the particle to its initial position every MAX_LIFETIME ticks,
-	// with a pseudo-random shift for each particle
+	// Reset the particle to its initial position every so often,
+	// with a pseudo-random phase shift for each particle
 	vec2 old_position = ((current_tick - random) % particle_lifetime == 0)
-		? vec2(gl_WorkGroupID.xy)
+		? vec2(gl_GlobalInvocationID.xy)
 		: particles[id].front;
 
 	particles[id].front = old_position + velocity_at(old_position);

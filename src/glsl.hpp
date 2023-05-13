@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace glsl {
+namespace gl {
 
 enum class Shader_type: GLenum {
 	fragment = GL_FRAGMENT_SHADER,

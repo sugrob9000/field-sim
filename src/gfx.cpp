@@ -20,8 +20,7 @@ struct Context {
 	SDL_Window* window;
 	SDL_GLContext glcontext;
 
-	Context (Resolution res, Config cfg)
-		: resolution{ res }
+	Context (Resolution res, Config cfg): resolution{ res }
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
 			FATAL("Failed to initialize SDL: {}", SDL_GetError());
@@ -70,11 +69,10 @@ struct Context {
 			glDebugMessageCallback(callback, nullptr);
 		}
 
-		MESSAGE("Renderer is '{}'", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
-
+		MESSAGE("Renderer is '{}' by '{}'", gl::get_string(GL_RENDERER), gl::get_string(GL_VENDOR));
 		gl::poll_errors_and_die("context init");
 
-		constexpr unsigned spacing = 2;
+		constexpr unsigned spacing = 1;
 		fieldviz_init(resolution / spacing);
 		fieldviz_ensure_least_framebuffer_size(resolution);
 	}
@@ -98,8 +96,8 @@ struct Context {
 // ================================ Field visualization ================================
 
 struct Field_viz {
-	Resolution particle_grid;
-	unsigned total_particles () const { return particle_grid.x * particle_grid.y; }
+	Resolution grid_size;
+	unsigned get_total_particles () const { return grid_size.x * grid_size.y; }
 
 	unsigned current_tick = 0;
 
@@ -107,13 +105,17 @@ struct Field_viz {
 	// has a "head" and a "tail", which are 2d points. Those are used both to draw the
 	// particle and to calculate its new position in a compute pass
 	// Particle coordinates are such that neighbors in the grid are 1 apart
-	// TODO: maybe double-buffer to run compute and draw at once
 
 	gl::Buffer particles_buffer;
 	gl::Vertex_array lines_vao;
 
-	glsl::Program draw_particles_program;
-	glsl::Program update_particles_program;
+	gl::Program draw_particles_program;
+
+	// Compute shader
+	gl::Program update_particles_program;
+	// Matches the size specified in the shader
+	constexpr static Resolution workgroup_size = { 32, 32 };
+	Resolution get_dispatch_size () const { return grid_size / workgroup_size; }
 
 	// For a cooler effect, we paint on top of what was drawn on the previous frame.
 	// For the contents of the framebuffer to be well-defined at frame start, we have
@@ -121,7 +123,7 @@ struct Field_viz {
 	// (and do become garbage in practice, in the absence of a compositor)
 	Resolution accum_fbo_size = { 0, 0 };
 	gl::Framebuffer accum_fbo;
-	gl::Texture accum_texture;
+	gl::Renderbuffer accum_rbo;
 
 	unsigned particle_lifetime = 200;
 
@@ -141,12 +143,18 @@ struct Field_viz {
 	unsigned num_vortices = 0;
 	unsigned num_pushers = 0;
 
-	Field_viz (Resolution particle_grid_size_): particle_grid { particle_grid_size_ }
+	Field_viz (Resolution grid_size_): grid_size { grid_size_ }
 	{
+		// Round the grid size down to workgroup size. TODO handle this more gracefully?
+		grid_size /= workgroup_size;
+		grid_size *= workgroup_size;
+
+		MESSAGE("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, get_total_particles());
+
 		{ // VBO
 			particles_buffer = gl::create_buffer();
 			glNamedBufferStorage(particles_buffer.get(),
-					2*sizeof(vec2)*total_particles(), nullptr, 0);
+					2*sizeof(vec2)*get_total_particles(), nullptr, 0);
 		}
 
 		{ // VAO & vertex format
@@ -172,8 +180,8 @@ struct Field_viz {
 			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
 		}
 
-		draw_particles_program = glsl::Program::from_frag_vert("lines.frag", "lines.vert");
-		update_particles_program = glsl::Program::from_compute("particle.comp");
+		draw_particles_program = gl::Program::from_frag_vert("lines.frag", "lines.vert");
+		update_particles_program = gl::Program::from_compute("particle.comp");
 
 		gl::poll_errors_and_die("field viz init");
 	}
@@ -185,8 +193,8 @@ struct Field_viz {
 	void advance_simulation () {
 		{ // Update mapped buffer data
 			auto& m = *actors_buffer_mapped;
-			float w = particle_grid.x;
-			float h = particle_grid.y;
+			float w = grid_size.x;
+			float h = grid_size.y;
 			float sec = current_tick / 60.0f;
 
 			num_vortices = 0;
@@ -199,13 +207,16 @@ struct Field_viz {
 			};
 
 			add_vortex(w*0.5, h*0.5, 200);
-			add_vortex(w*0.2, h*0.1, 100*sin(sec));
+			add_vortex(w*0.2, h*0.1, 70*sin(sec));
+			add_vortex(w*0.3, h*0.3, 70*sin(sec));
 
+			add_pusher(w*0.3, h*0.9, 200*sin(sec));
 			add_pusher(w*0.7, h*0.5, 75 + 75*sin(sec * 1.5f));
 		}
 
-		{ // Update uniform data
-			glUseProgram(update_particles_program.get());
+		glUseProgram(update_particles_program.get());
+
+		{ // Upload uniform data
 			constexpr GLint unif_loc_tick = 0;
 			constexpr GLint unif_loc_particle_lifetime = 1;
 			constexpr GLint unif_loc_num_vortices = 10;
@@ -221,7 +232,8 @@ struct Field_viz {
 		gl::flush_mapped_buffer_range(actors_buffer,
 				offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
 
-		glDispatchCompute(particle_grid.x, particle_grid.y, 1);
+		Resolution dispatch_size = get_dispatch_size();
+		glDispatchCompute(dispatch_size.x, dispatch_size.y, 1);
 
 		current_tick++;
 	}
@@ -250,17 +262,11 @@ struct Field_viz {
 		accum_fbo = gl::gen_framebuffer();
 		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
 
-		accum_texture = gl::gen_texture();
-		glBindTexture(GL_TEXTURE_2D, accum_texture.get());
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, accum_fbo_size.x, accum_fbo_size.y);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-				GL_TEXTURE_2D, accum_texture.get(), 0);
+		accum_rbo = gl::gen_renderbuffer();
+		glBindRenderbuffer(GL_RENDERBUFFER, accum_rbo.get());
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, accum_fbo_size.x, accum_fbo_size.y);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				GL_RENDERBUFFER, accum_rbo.get());
 
 		if (GLenum s = glCheckFramebufferStatus(GL_FRAMEBUFFER); s != GL_FRAMEBUFFER_COMPLETE)
 			FATAL("Framebuffer {0} is incomplete: status {1} ({1:x})", accum_fbo.get(), s);
@@ -275,20 +281,24 @@ struct Field_viz {
 			glClear(GL_COLOR_BUFFER_BIT);
 		}
 
-		{
-			glUseProgram(draw_particles_program.get());
-			constexpr GLint unif_loc_grid_size = 0;
-			constexpr GLint unif_loc_scale = 2;
+		glUseProgram(draw_particles_program.get());
 
-			glUniform2ui(unif_loc_grid_size, particle_grid.x, particle_grid.y);
+		{ // Upload uniforms
+			constexpr GLint unif_loc_workgroup_size = 0;
+			constexpr GLint unif_loc_workgroup_num = 2;
+			constexpr GLint unif_loc_scale = 4;
+
+			Resolution dispatch_size = get_dispatch_size();
+			glUniform2ui(unif_loc_workgroup_size, workgroup_size.x, workgroup_size.y);
+			glUniform2ui(unif_loc_workgroup_num, dispatch_size.x, dispatch_size.y);
 
 			// If viewport is too wide, cut off top & bottom; if too tall, cut off left & right
-			float aspect = (float) particle_grid.x * res.y / (particle_grid.y * res.x);
+			float aspect = (float) grid_size.x * res.y / (grid_size.y * res.x);
 			glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
 		}
 
 		glBindVertexArray(lines_vao.get());
-		glDrawArrays(GL_LINES, 0, 2 * total_particles());
+		glDrawArrays(GL_LINES, 0, 2 * get_total_particles());
 
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, accum_fbo.get());
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

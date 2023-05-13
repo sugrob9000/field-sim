@@ -7,7 +7,7 @@
 
 using std::string_view;
 
-namespace glsl {
+namespace gl {
 
 // ============================= Shader sources from files =============================
 // A dumb implementation that supports #include, but leaves other preprocessing

@@ -65,11 +65,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
 
 	set(cxx-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
 	target_compile_options(${exec} PRIVATE ${cxx-warnings})
-	target_compile_options(${exec} PRIVATE -fmax-errors=1 -fno-exceptions -fno-rtti)
-	target_compile_options(${exec} PRIVATE "$<$<CONFIG:Debug>:-Og>")
+	target_compile_options(${exec} PRIVATE -fmax-errors=1)
 
 	if (CMAKE_BUILD_TYPE STREQUAL Debug)
-		target_compile_options(${exec} PRIVATE -fsanitize=undefined)
+		target_compile_options(${exec} PRIVATE -fsanitize=undefined -Og)
 		target_link_options(${exec} PRIVATE -fsanitize=undefined)
 	endif()
 else()
