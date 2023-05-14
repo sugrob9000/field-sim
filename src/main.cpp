@@ -1,5 +1,7 @@
 #include "gfx.hpp"
+#include <charconv>
 #include <chrono>
+#include <string_view>
 #include <thread>
 
 namespace {
@@ -36,23 +38,54 @@ void wait_fps (int fps)
 	next += std::chrono::microseconds{ 1000'000 / fps };
 	std::this_thread::sleep_until(next);
 }
+
+gfx::Config get_config (int argc, const char* const* argv)
+{
+	using std::string_view;
+	gfx::Config cfg;
+
+	using Error_message = string_view;
+	auto process = [&cfg] (string_view arg) -> std::optional<Error_message> {
+		if (!arg.starts_with("--")) return "options start with --";
+		arg = arg.substr(2);
+		if (arg == "debug") {
+			cfg.debug = true;
+		} else if (arg == "no-debug") {
+			cfg.debug = false;
+		} else if (arg.starts_with("grid=")) {
+			arg = arg.substr(sizeof("grid=")-1);
+			size_t x = arg.find('x');
+			if (x == arg.npos) return "grid resolution has format e.g. 200x200";
+			struct Dimension {
+				string_view str;
+				unsigned* ptr;
+			} dims[2] = {
+				{ arg.substr(0, x), &cfg.particles_x },
+				{ arg.substr(x+1),  &cfg.particles_y }
+			};
+			for (const auto& d: dims) {
+				auto [ptr, ec] = std::from_chars(d.str.begin(), d.str.end(), *d.ptr);
+				if (ec != std::errc{}) return "one of the coordinates is not a number";
+			}
+		} else {
+			return "unknown option";
+		}
+		return {};
+	};
+
+	for (int i = 1; i < argc; i++) {
+		string_view arg = argv[i];
+		if (auto error_msg = process(arg))
+			WARNING("Bad argument '{}': {}", arg, *error_msg);
+	}
+
+	return cfg;
+}
 } // anon namespace
 
 int main (int argc, char** argv)
 {
-	gfx::Config gfx_config = { .debug = false, .msaa_samples = 4 };
-
-	{ // Crudely parse arguments
-		for (int i = 1; i < argc; i++) {
-			std::string_view arg = argv[i];
-			if (arg == "debug")
-				gfx_config.debug = true;
-			else if (arg == "nodebug")
-				gfx_config.debug = false;
-		}
-	}
-
-	gfx::init(1560, 960, gfx_config);
+	gfx::init(1560, 960, get_config(argc, argv));
 
 	for (Input_state input; !input.poll_events().should_quit; ) {
 		wait_fps(60);

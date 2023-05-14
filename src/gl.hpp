@@ -37,7 +37,7 @@ template <auto GL_delete_func> struct GL_obj_deleter {
 using Buffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteBuffers>, 0>;
 using Texture = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteTextures>, 0>;
 using Renderbuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteRenderbuffers>, 0>;
-using Framebuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteRenderbuffers>, 0>;
+using Framebuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteFramebuffers>, 0>;
 using Vertex_array = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteVertexArrays>, 0>;
 
 inline auto gen_buffer () { GLuint id; glGenBuffers(1, &id); return Buffer(id); }

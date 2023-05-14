@@ -58,12 +58,13 @@ struct Context {
 		SDL_SetWindowTitle(window, "Vector fields");
 
 		if (cfg.debug) {
+			MESSAGE("Enabling verbose OpenGL debugging");
 			const auto callback = [] (
 					[[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
 					[[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
 					[[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
 					[[maybe_unused]] const void* param) -> void {
-				WARNING("OpenGL: {}", msg);
+				MESSAGE("OpenGL: {}", msg);
 			};
 			glEnable(GL_DEBUG_OUTPUT);
 			glDebugMessageCallback(callback, nullptr);
@@ -72,9 +73,16 @@ struct Context {
 		MESSAGE("Renderer is '{}' by '{}'", gl::get_string(GL_RENDERER), gl::get_string(GL_VENDOR));
 		gl::poll_errors_and_die("context init");
 
-		constexpr unsigned spacing = 1;
-		fieldviz_init(resolution / spacing);
-		fieldviz_ensure_least_framebuffer_size(resolution);
+		{ // Initialize field vizualization
+			constexpr int default_spacing = 2;
+			Resolution grid_size = { cfg.particles_x, cfg.particles_y };
+			for (int i: { 0, 1 }) {
+				if (grid_size[i] == 0)
+					grid_size[i] = resolution[i] / default_spacing;
+			}
+			fieldviz_init(grid_size);
+			fieldviz_ensure_least_framebuffer_size(resolution);
+		}
 	}
 
 	~Context () {
@@ -149,7 +157,10 @@ struct Field_viz {
 		grid_size /= workgroup_size;
 		grid_size *= workgroup_size;
 
-		MESSAGE("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, get_total_particles());
+		if (unsigned num_particles = get_total_particles())
+			MESSAGE("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, num_particles);
+		else
+			FATAL("The number of particles got rounded down to zero. Try larger grid");
 
 		{ // VBO
 			particles_buffer = gl::create_buffer();
@@ -207,8 +218,8 @@ struct Field_viz {
 			};
 
 			add_vortex(w*0.5, h*0.5, 200);
-			add_vortex(w*0.2, h*0.1, 70*sin(sec));
-			add_vortex(w*0.3, h*0.3, 70*sin(sec));
+			add_vortex(w*0.2, h*0.1, 70*sin(sec * 0.5));
+			add_vortex(w*0.3, h*0.3, 70*cos(sec * 0.5));
 
 			add_pusher(w*0.3, h*0.9, 200*sin(sec));
 			add_pusher(w*0.7, h*0.5, 75 + 75*sin(sec * 1.5f));
@@ -265,6 +276,7 @@ struct Field_viz {
 		accum_rbo = gl::gen_renderbuffer();
 		glBindRenderbuffer(GL_RENDERBUFFER, accum_rbo.get());
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, accum_fbo_size.x, accum_fbo_size.y);
+
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER, accum_rbo.get());
 
