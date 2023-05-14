@@ -8,7 +8,12 @@ using Resolution = glm::vec<2, unsigned>;
 
 namespace gfx {
 
-static void fieldviz_init (Resolution);
+struct Field_viz_config {
+	Resolution particle_grid_size;
+	unsigned particle_lifetime;
+};
+
+static void fieldviz_init (const Field_viz_config&);
 static void fieldviz_deinit ();
 static void fieldviz_ensure_least_framebuffer_size (Resolution);
 
@@ -20,7 +25,8 @@ struct Context {
 	SDL_Window* window;
 	SDL_GLContext glcontext;
 
-	Context (Resolution res, Config cfg): resolution{ res }
+	explicit Context (const Config& cfg)
+		: resolution{ cfg.screen_res_x, cfg.screen_res_y }
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
 			FATAL("Failed to initialize SDL: {}", SDL_GetError());
@@ -64,7 +70,19 @@ struct Context {
 					[[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
 					[[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
 					[[maybe_unused]] const void* param) -> void {
-				MESSAGE("OpenGL: {}", msg);
+				constexpr auto format = "OpenGL: {}";
+				switch (severe) {
+				case GL_DEBUG_SEVERITY_HIGH:
+					FATAL(format, msg);
+					break;
+				case GL_DEBUG_SEVERITY_MEDIUM:
+					WARNING(format, msg);
+					break;
+				case GL_DEBUG_SEVERITY_LOW:
+				case GL_DEBUG_SEVERITY_NOTIFICATION:
+					MESSAGE(format, msg);
+					break;
+				}
 			};
 			glEnable(GL_DEBUG_OUTPUT);
 			glDebugMessageCallback(callback, nullptr);
@@ -75,12 +93,15 @@ struct Context {
 
 		{ // Initialize field vizualization
 			constexpr int default_spacing = 2;
-			Resolution grid_size = { cfg.particles_x, cfg.particles_y };
+			Field_viz_config fvcfg = {
+				.particle_grid_size { cfg.particles_x, cfg.particles_y },
+				.particle_lifetime = cfg.particle_lifetime
+			};
 			for (int i: { 0, 1 }) {
-				if (grid_size[i] == 0)
-					grid_size[i] = resolution[i] / default_spacing;
+				if (fvcfg.particle_grid_size[i] == 0)
+					fvcfg.particle_grid_size[i] = resolution[i] / default_spacing;
 			}
-			fieldviz_init(grid_size);
+			fieldviz_init(fvcfg);
 			fieldviz_ensure_least_framebuffer_size(resolution);
 		}
 	}
@@ -151,7 +172,8 @@ struct Field_viz {
 	unsigned num_vortices = 0;
 	unsigned num_pushers = 0;
 
-	Field_viz (Resolution grid_size_): grid_size { grid_size_ }
+	explicit Field_viz (const Field_viz_config& cfg)
+		: grid_size { cfg.particle_grid_size }, particle_lifetime { cfg.particle_lifetime }
 	{
 		// Round the grid size down to workgroup size. TODO handle this more gracefully?
 		grid_size /= workgroup_size;
@@ -323,9 +345,9 @@ struct Field_viz {
 static Deferred_init<Context> global_render_context;
 static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
-void init (unsigned w, unsigned h, Config cfg)
+void init (const Config& cfg)
 {
-	global_render_context.init(Resolution{ w, h }, cfg);
+	global_render_context.init(cfg);
 }
 
 void deinit ()
@@ -345,9 +367,9 @@ void present_frame ()
 	SDL_GL_SwapWindow(global_render_context->window);
 }
 
-static void fieldviz_init (Resolution particle_grid_size)
+static void fieldviz_init (const Field_viz_config& cfg)
 {
-	global_fieldviz.init(particle_grid_size);
+	global_fieldviz.init(cfg);
 }
 
 static void fieldviz_deinit ()

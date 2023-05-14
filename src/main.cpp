@@ -39,53 +39,69 @@ void wait_fps (int fps)
 	std::this_thread::sleep_until(next);
 }
 
+namespace arg {
+using std::string_view;
+
+struct Arg_parse_exception {
+	string_view subject;
+	string_view defect;
+};
+
+void parse_number (string_view arg, auto& x)
+{
+	auto [ptr, ec] = std::from_chars(arg.begin(), arg.end(), x);
+	if (ec != std::errc{})
+		throw Arg_parse_exception { .subject = arg, .defect = "is not a number" };
+}
+
+void parse_resolution (string_view arg, auto& x, auto& y)
+{
+	size_t delim = arg.find('x');
+	if (delim == arg.npos)
+		throw Arg_parse_exception { .subject = arg, .defect = "has no delimiter (e.g. 200x200)" };
+	parse_number(arg.substr(0, delim), x);
+	parse_number(arg.substr(delim+1), y);
+}
+
 gfx::Config get_config (int argc, const char* const* argv)
 {
-	using std::string_view;
 	gfx::Config cfg;
 
-	using Error_message = string_view;
-	auto process = [&cfg] (string_view arg) -> std::optional<Error_message> {
-		if (!arg.starts_with("--")) return "options start with --";
+	const auto process_argument = [&cfg] (string_view arg) {
+		if (!arg.starts_with("--"))
+			throw Arg_parse_exception { .subject = arg, .defect = "does not start with --" };
 		arg = arg.substr(2);
-		if (arg == "debug") {
+		if (arg == "debug")
 			cfg.debug = true;
-		} else if (arg == "no-debug") {
+		else if (arg == "no-debug")
 			cfg.debug = false;
-		} else if (arg.starts_with("grid=")) {
-			arg = arg.substr(sizeof("grid=")-1);
-			size_t x = arg.find('x');
-			if (x == arg.npos) return "grid resolution has format e.g. 200x200";
-			struct Dimension {
-				string_view str;
-				unsigned* ptr;
-			} dims[2] = {
-				{ arg.substr(0, x), &cfg.particles_x },
-				{ arg.substr(x+1),  &cfg.particles_y }
-			};
-			for (const auto& d: dims) {
-				auto [ptr, ec] = std::from_chars(d.str.begin(), d.str.end(), *d.ptr);
-				if (ec != std::errc{}) return "one of the coordinates is not a number";
-			}
-		} else {
-			return "unknown option";
-		}
-		return {};
+		else if (arg.starts_with("res="))
+			parse_resolution(arg.substr(sizeof("res=")-1), cfg.screen_res_x, cfg.screen_res_y);
+		else if (arg.starts_with("grid="))
+			parse_resolution(arg.substr(sizeof("grid=")-1), cfg.particles_x, cfg.particles_y);
+		else if (arg.starts_with("life="))
+			parse_number(arg.substr(sizeof("life=")-1), cfg.particle_lifetime);
+		else
+			throw Arg_parse_exception { .subject = arg, .defect = "is not a known option" };
 	};
 
 	for (int i = 1; i < argc; i++) {
 		string_view arg = argv[i];
-		if (auto error_msg = process(arg))
-			WARNING("Bad argument '{}': {}", arg, *error_msg);
+		try {
+			process_argument(arg);
+		} catch (Arg_parse_exception& ex) {
+			WARNING("Bad argument '{}': '{}' {}", arg, ex.subject, ex.defect);
+		}
 	}
 
 	return cfg;
 }
+} // namespace arg
 } // anon namespace
 
 int main (int argc, char** argv)
 {
-	gfx::init(1560, 960, get_config(argc, argv));
+	gfx::init(arg::get_config(argc, argv));
 
 	for (Input_state input; !input.poll_events().should_quit; ) {
 		wait_fps(60);

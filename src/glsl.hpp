@@ -7,25 +7,23 @@
 #include <string_view>
 
 namespace gl {
-
-enum class Shader_type: GLenum {
-	fragment = GL_FRAGMENT_SHADER,
-	vertex = GL_VERTEX_SHADER,
-	geometry = GL_GEOMETRY_SHADER,
-	compute = GL_COMPUTE_SHADER,
-	tess_control = GL_TESS_CONTROL_SHADER,
-	tess_eval = GL_TESS_EVALUATION_SHADER,
-};
-
 namespace detail {
 struct Shader_deleter { void operator() (GLuint id) { glDeleteShader(id); } };
 struct Program_deleter { void operator() (GLuint id) { glDeleteProgram(id); } };
 }
 
 struct Shader: Unique_handle<GLuint, detail::Shader_deleter, 0> {
+	enum class Type {
+		fragment = GL_FRAGMENT_SHADER,
+		vertex = GL_VERTEX_SHADER,
+		geometry = GL_GEOMETRY_SHADER,
+		compute = GL_COMPUTE_SHADER,
+		tess_control = GL_TESS_CONTROL_SHADER,
+		tess_eval = GL_TESS_EVALUATION_SHADER,
+	};
 	using Unique_handle::Unique_handle;
-	static Shader from_file (Shader_type, std::string_view file_path);
-	static Shader from_source (Shader_type, std::string_view source);
+	static Shader from_file (Type, std::string_view file_path);
+	static Shader from_source (Type, std::string_view source);
 };
 
 struct Program: Unique_handle<GLuint, detail::Program_deleter, 0> {

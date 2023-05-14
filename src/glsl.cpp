@@ -110,7 +110,7 @@ constexpr static const char shader_prologue[] =
 
 // `src` is std::string because we need zero-termination for glShaderSource,
 // so would have made a std::string anyway
-static Shader compile_shader (Shader_type type, const std::string& src, string_view name)
+static Shader compile_shader (Shader::Type type, const std::string& src, string_view name)
 {
 	GLuint id = glCreateShader(static_cast<GLenum>(type));
 	if (id == 0)
@@ -133,12 +133,12 @@ static Shader compile_shader (Shader_type type, const std::string& src, string_v
 	return Shader(id);
 }
 
-Shader Shader::from_file (Shader_type type, string_view file_path)
+Shader Shader::from_file (Type type, string_view file_path)
 {
 	return compile_shader(type, File_source{file_path}, file_path);
 }
 
-Shader Shader::from_source (Shader_type type, string_view source)
+Shader Shader::from_source (Type type, string_view source)
 {
 	return compile_shader(type, std::string{source}, "<source string>");
 }
@@ -177,15 +177,15 @@ Program::Program (std::span<const Shader> shaders)
 Program Program::from_frag_vert (string_view frag_path, string_view vert_path)
 {
 	Shader shaders[] = {
-		Shader::from_file(Shader_type::fragment, frag_path),
-		Shader::from_file(Shader_type::vertex, vert_path),
+		Shader::from_file(Shader::Type::fragment, frag_path),
+		Shader::from_file(Shader::Type::vertex, vert_path),
 	};
 	return Program(shaders);
 }
 
 Program Program::from_compute (string_view compute_path)
 {
-	Shader shader[] = { Shader::from_file(Shader_type::compute, compute_path) };
+	Shader shader[] = { Shader::from_file(Shader::Type::compute, compute_path) };
 	return Program(shader);
 }
 
