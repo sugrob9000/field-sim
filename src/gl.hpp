@@ -13,49 +13,43 @@ namespace gl {
 void poll_errors_and_warn (std::string_view tag);
 void poll_errors_and_die (std::string_view tag);
 
+void debug_message_callback
+(GLenum src, GLenum type, GLuint id, GLenum severe,
+ GLsizei len, const char* msg, const void* param);
+
 inline std::string_view get_string (GLenum id) { return reinterpret_cast<const char*>(glGetString(id)); }
 
-// ========================== Basic OpenGL handle wrappers ==========================
-// TODO: Gen* calls don't actually create valid OpenGL objects until the names returned
-// are bound to a target, meaning the Unique_handle objects returned by gl::gen* functions
-// may not represent actual objects even with a nontrivial ID.
-// This is the reason that e.g. gl::gen_texture does not take the texture target or any
-// other parameters, though it logically should.
-// glDelete* functions are specified to swallow invalid names silently, but it'd be
-// cleaner to get rid of gen* and make create* for all of this API; in some places it will
-// require eschewing non-DSA usage completely.
-
+// ============================== OpenGL handle wrappers ==============================
 namespace detail {
-// If the deleter is imported directly, `GL_delete_func` is `void(*)(GLsizei, GLuint*)`.
-// If it is imported by the loader via GetProcAddress, the name of the function
-// resolves to a variable, and `GL_delete_func` is `void(**)(GLsizei, GLuint*)`.
-// So, `GL_delete_func` has to be `auto`, and calling `*GL_delete_func` works either way.
+// Creation and deletion functions have their address taken, so:
+// if the deleter is imported directly, `GL_xxx_func` is `void(*)(...)`.
+// if it is imported by the loader via GetProcAddress, the name of the function
+// resolves to a variable, and the type is is `void(**)(...)`.
+// So, `GL_xxx_func` have to be `auto`, and dereferencing before calling works either way
+
 template <auto GL_delete_func> struct GL_obj_deleter {
-	void operator() (GLuint id) const noexcept { (*GL_delete_func)(1, &id); }
+	STATIC_CALL_OP void operator() (GLuint id) const noexcept { (*GL_delete_func)(1, &id); }
+};
+
+template <auto GL_create_func, auto GL_delete_func>
+struct GL_basic_object: Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0> {
+	using Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0>::Unique_handle;
+	template <typename... Args> static GL_basic_object create (Args... args)
+		requires requires (GLuint id) { (*GL_create_func)(args..., 1, &id); }
+	{
+		GLuint id;
+		(*GL_create_func)(args..., 1, &id);
+		return GL_basic_object(id);
+	}
 };
 } // namespace detail
-using Buffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteBuffers>, 0>;
-using Texture = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteTextures>, 0>;
-using Renderbuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteRenderbuffers>, 0>;
-using Framebuffer = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteFramebuffers>, 0>;
-using Vertex_array = Unique_handle<GLuint, detail::GL_obj_deleter<&glDeleteVertexArrays>, 0>;
 
-inline auto gen_buffer () { GLuint id; glGenBuffers(1, &id); return Buffer(id); }
-inline auto create_buffer () { GLuint id; glCreateBuffers(1, &id); return Buffer(id); }
-
-inline auto gen_renderbuffer () { GLuint id; glGenRenderbuffers(1, &id); return Renderbuffer(id); }
-inline auto create_renderbuffer () { GLuint id; glCreateRenderbuffers(1, &id); return Renderbuffer(id); }
-
-inline auto gen_texture () { GLuint id; glGenTextures(1, &id); return Texture(id); }
-inline auto create_texture (GLenum target)
-{
-	GLuint id;
-	glCreateTextures(target, 1, &id);
-	return Texture(id);
-}
-
-inline auto gen_framebuffer () { GLuint id; glGenFramebuffers(1, &id); return Framebuffer(id); }
-inline auto gen_vertex_array () { GLuint id; glGenVertexArrays(1, &id); return Vertex_array(id); }
+using Buffer = detail::GL_basic_object<&glCreateBuffers, &glDeleteBuffers>;
+using Renderbuffer = detail::GL_basic_object<&glCreateRenderbuffers, &glDeleteRenderbuffers>;
+using Framebuffer = detail::GL_basic_object<&glCreateFramebuffers, &glDeleteFramebuffers>;
+using Vertex_array = detail::GL_basic_object<&glCreateVertexArrays, &glDeleteVertexArrays>;
+using Query = detail::GL_basic_object<&glCreateQueries, &glDeleteQueries>;
+using Texture = detail::GL_basic_object<&glCreateTextures, &glDeleteTextures>;
 
 // ================================= Mapping buffers =================================
 

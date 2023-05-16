@@ -28,6 +28,10 @@ struct Context {
 	explicit Context (const Config& cfg)
 		: resolution{ cfg.screen_res_x, cfg.screen_res_y }
 	{
+		constexpr Resolution min_res = { 100, 100 };
+		if (resolution.x < min_res.x || resolution.y < min_res.y)
+			FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
+
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
 			FATAL("Failed to initialize SDL: {}", SDL_GetError());
 
@@ -65,27 +69,8 @@ struct Context {
 
 		if (cfg.debug) {
 			MESSAGE("Enabling verbose OpenGL debugging");
-			const auto callback = [] (
-					[[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
-					[[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
-					[[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
-					[[maybe_unused]] const void* param) -> void {
-				constexpr auto format = "OpenGL: {}";
-				switch (severe) {
-				case GL_DEBUG_SEVERITY_HIGH:
-					FATAL(format, msg);
-					break;
-				case GL_DEBUG_SEVERITY_MEDIUM:
-					WARNING(format, msg);
-					break;
-				case GL_DEBUG_SEVERITY_LOW:
-				case GL_DEBUG_SEVERITY_NOTIFICATION:
-					MESSAGE(format, msg);
-					break;
-				}
-			};
 			glEnable(GL_DEBUG_OUTPUT);
-			glDebugMessageCallback(callback, nullptr);
+			glDebugMessageCallback(gl::debug_message_callback, nullptr);
 		}
 
 		MESSAGE("Renderer is '{}' by '{}'", gl::get_string(GL_RENDERER), gl::get_string(GL_VENDOR));
@@ -185,13 +170,13 @@ struct Field_viz {
 			FATAL("The number of particles got rounded down to zero. Try larger grid");
 
 		{ // VBO
-			particles_buffer = gl::create_buffer();
+			particles_buffer = gl::Buffer::create();
 			glNamedBufferStorage(particles_buffer.get(),
 					2*sizeof(vec2)*get_total_particles(), nullptr, 0);
 		}
 
 		{ // VAO & vertex format
-			lines_vao = gl::gen_vertex_array();
+			lines_vao = gl::Vertex_array::create();
 			glBindVertexArray(lines_vao.get());
 
 			glEnableVertexAttribArray(0);
@@ -202,7 +187,7 @@ struct Field_viz {
 		}
 
 		{ // SSBOs and UBOs
-			actors_buffer = gl::create_buffer();
+			actors_buffer = gl::Buffer::create();
 			glNamedBufferStorage(actors_buffer.get(), sizeof(GPU_actors), nullptr,
 					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
 			actors_buffer_mapped = gl::map_buffer_range_as<GPU_actors>
@@ -211,6 +196,11 @@ struct Field_viz {
 
 			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
 			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
+		}
+
+		{
+			auto some_texture = gl::Texture::create(GL_TEXTURE_2D);
+			glTextureStorage2D(some_texture.get(), 1, GL_RGB8, 1000, 1000);
 		}
 
 		draw_particles_program = gl::Program::from_frag_vert("lines.frag", "lines.vert");
@@ -292,10 +282,10 @@ struct Field_viz {
 			}
 		}
 
-		accum_fbo = gl::gen_framebuffer();
+		accum_fbo = gl::Framebuffer::create();
 		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
 
-		accum_rbo = gl::gen_renderbuffer();
+		accum_rbo = gl::Renderbuffer::create();
 		glBindRenderbuffer(GL_RENDERBUFFER, accum_rbo.get());
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, accum_fbo_size.x, accum_fbo_size.y);
 

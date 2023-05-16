@@ -14,18 +14,18 @@ struct Input_state {
 		for (SDL_Event event; SDL_PollEvent(&event); ) {
 			gfx::handle_sdl_event(event);
 			switch (event.type) {
-				case SDL_QUIT: should_quit = true; break;
-				case SDL_KEYDOWN:
-					switch (event.key.keysym.sym) {
-						case SDLK_q: should_quit = true; break;
-						case SDLK_c: should_clear_frame ^= 1; break;
-						case SDLK_f: should_freeze_field ^= 1; break;
-						case SDLK_d:
-							if (event.key.keysym.mod & KMOD_SHIFT)
-								asm("int3":::);
-						break;
-					}
+			case SDL_QUIT: should_quit = true; break;
+			case SDL_KEYDOWN:
+				switch (event.key.keysym.sym) {
+				case SDLK_q: should_quit = true; break;
+				case SDLK_c: should_clear_frame ^= 1; break;
+				case SDLK_f: should_freeze_field ^= 1; break;
+				case SDLK_d:
+					if (event.key.keysym.mod & KMOD_SHIFT)
+						asm("int3":::);
 					break;
+				}
+				break;
 			}
 		}
 		return *this;

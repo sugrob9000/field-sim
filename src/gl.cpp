@@ -36,4 +36,25 @@ void poll_errors_and_die (std::string_view tag)
 		FATAL("{} OpenGL error(s) reported during '{}'", num_errors, tag);
 }
 
+void debug_message_callback
+([[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
+ [[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
+ [[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
+ [[maybe_unused]] const void* param)
+{
+	constexpr auto format = "OpenGL: {}";
+	switch (severe) {
+	case GL_DEBUG_SEVERITY_HIGH:
+		FATAL(format, msg);
+		break;
+	case GL_DEBUG_SEVERITY_MEDIUM:
+		WARNING(format, msg);
+		break;
+	case GL_DEBUG_SEVERITY_LOW:
+	case GL_DEBUG_SEVERITY_NOTIFICATION:
+		MESSAGE(format, msg);
+		break;
+	}
+}
+
 } // namespace gl
