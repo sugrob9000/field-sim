@@ -28,7 +28,9 @@ namespace detail {
 // So, `GL_xxx_func` have to be `auto`, and dereferencing before calling works either way
 
 template <auto GL_delete_func> struct GL_obj_deleter {
-	STATIC_CALL_OP void operator() (GLuint id) const noexcept { (*GL_delete_func)(1, &id); }
+	STATIC_CALL_OP void operator() (GLuint id) const noexcept {
+		(*GL_delete_func)(1, &id);
+	}
 };
 
 template <auto GL_create_func, auto GL_delete_func>

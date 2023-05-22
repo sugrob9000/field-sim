@@ -37,6 +37,7 @@ find_package(GLEW REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(glm REQUIRED)
+find_package(fmt CONFIG REQUIRED)
 
 add_subdirectory(${libsrc-dir} EXCLUDE_FROM_ALL)
 
@@ -58,7 +59,7 @@ target_link_libraries(${exec}
 	${SDL2_LIBRARIES}
 	${OPENGL_LIBRARIES}
 	${GLEW_LIBRARIES}
-	fmt imgui)
+	fmt::fmt imgui)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
 	message(STATUS "Enabling GCC-specific configuration")
