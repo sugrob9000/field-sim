@@ -6,25 +6,46 @@
 #include <type_traits>
 #include <utility>
 
-namespace detail {
-// The types for functions and function pointers are not stateless, because the type
-// only has the signature, which is not enough information for a call.
+// Unique_handle:
 //
+// Like std::unique_ptr, but for arbitrary integer handles, not just pointers. Still
+// requires one possible "null" value, but it can be any value (0, -1, etc.)
+//
+// A stateless deleter is required. Function and function pointer types are not stateless.
+// Their type only represents the signature, which is not enough information for a call.
 // Example of a statless deleter:
 //
-// struct My_C_API_deleter {
-//   operator() (void* p) const { C_API_delete(p); }
-// };
+//   struct My_C_API_deleter {
+//     operator() (void* p) const { C_API_delete(p); }
+//   };
+//
+// Though nothing in theory prevents the support for stateful deleters, in the current
+// implementation, nothing other than the underlying handle is stored.
+
+
+// Unique_array:
+//
+// Wrapper over std::unique_ptr<T[]> + size. Also supports only stateless deleters so far.
+// For when the array should be dynamically allocated, but not dynamically resized,
+// avoiding the associated overhead (additional pointer and exponential growth).
+//
+// Supports deep constness and iteration.
+//
+// The interface is similar to that of `unique_ptr`: the type only knows how to delete the
+// contents, not how they were created. This means:
+//  - it is up to the user to pass pointers and sizes suitable for that to the constructor.
+//  - no copying, no construction from range/iterator pair, etc.
+// So, it is advised to use `make_array`, which ties creation and deletion back together,
+// like std::make_unique does.
+// TODO: `make_array` from range or iterator pair,
+//    OR, better, change `Unique_array` to use allocators instead of deleters
+
+
+namespace detail {
+//
 template <typename T, typename Id> concept Stateless_deleter
 	= std::is_empty_v<T> && !std::is_pointer_v<T> && !std::is_function_v<T>;
 }
-
-// Unique_handle: like std::unique_ptr, but for arbitrary integer handles,
-// not just pointers, but still necessarily with one possible "null" value.
-//
-// A stateless deleter is required.
-// (Though nothing in theory prevents the implementation of stateful deleters.)
-// In the current implementation, nothing other than the underlying handle is stored.
 
 template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
 class Unique_handle {
@@ -79,14 +100,6 @@ public:
 };
 
 
-// Unique_array: wrapper over unique_ptr<T[]> + size.
-//
-// For when one needs a dynamic array without the ability to dynamically resize - and the
-// associated overhead, such as storing capacity or exponential allocation growth.
-// Can still change size via reset() or move-assignment.
-//
-// Over unique_ptr + size, also provides (some) iterator support and deep constness
-
 template <typename T, detail::Stateless_deleter<T> Deleter = std::default_delete<T>>
 class Unique_array {
 	std::unique_ptr<T[]> storage{};
@@ -102,29 +115,40 @@ public:
 	using iterator = pointer;
 	using const_iterator = const_pointer;
 
-	Unique_array ();
+	Unique_array () = default;
 	void reset () { storage.reset(); len = 0; }
 
-	// `ptr` must point to an array of `len_` elements suitable for deallocation with T,
-	// which is a tight invariant to have on the two parameters of a constructor.
-	// You should wrap this constructor in a bespoke `make_...` to maintain it,
-	// or use `make_array`, which does that for `new[]/delete[]`
 	Unique_array (T* ptr, size_t len_): storage(ptr), len{len_} {}
 	void reset (T* ptr, size_t len_) { storage.reset(ptr); len = len_; }
 
 	Unique_array (Unique_array&& other)
 		: storage{ std::move(other.storage) }, len{ std::exchange(other.len, 0) } {}
+	void reset (Unique_array&& other) {
+		storage = std::move(other.storage);
+		len = std::exchange(other.len, 0);
+	}
+	Unique_array& operator= (Unique_array&& other) {
+		reset(other);
+		return *this;
+	}
 
-	[[nodiscard]] T* data () { return storage.get(); }
-	[[nodiscard]] const T* data () const { return storage.get(); }
+	Unique_array (const Unique_array&) = delete;
+	Unique_array& operator= (const Unique_array&) = delete;
+	void reset (const Unique_array&) = delete;
+
+	[[nodiscard]] pointer data () { return storage.get(); }
+	[[nodiscard]] const_pointer data () const { return storage.get(); }
 
 	[[nodiscard]] size_t size () const { return len; }
 	[[nodiscard]] bool empty () const { return len == 0; }
 
-	iterator begin () { return storage.get(); }
-	iterator end () { return begin() + len; }
-	const_iterator begin () const { return storage.get(); }
-	const_iterator end () const { return storage.get() + len; }
+	[[nodiscard]] iterator begin () { return storage.get(); }
+	[[nodiscard]] iterator end () { return begin() + len; }
+	[[nodiscard]] const_iterator begin () const { return storage.get(); }
+	[[nodiscard]] const_iterator end () const { return storage.get() + len; }
+
+	[[nodiscard]] reference operator[] (size_t i) { return storage[i]; }
+	[[nodiscard]] const_reference operator[] (size_t i) const { return storage[i]; }
 };
 
 template <typename T> auto make_array (size_t len)

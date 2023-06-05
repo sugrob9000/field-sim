@@ -104,7 +104,7 @@ public:
 // ================================== Loading shaders ==================================
 
 constexpr static const char shader_prologue[] =
-"#version 430 core\n"
+"#version 460 core\n"
 "#extension GL_ARB_explicit_uniform_location: require\n"
 "#extension GL_ARB_shading_language_include: require\n";
 

@@ -8,7 +8,7 @@ namespace {
 struct Input_state {
 	bool should_quit = false;
 	bool should_clear_frame = false;
-	bool should_freeze_field = false;
+	bool should_update_field = true;
 
 	Input_state& poll_events () {
 		for (SDL_Event event; SDL_PollEvent(&event); ) {
@@ -19,7 +19,7 @@ struct Input_state {
 				switch (event.key.keysym.sym) {
 				case SDLK_q: should_quit = true; break;
 				case SDLK_c: should_clear_frame ^= 1; break;
-				case SDLK_f: should_freeze_field ^= 1; break;
+				case SDLK_f: should_update_field ^= 1; break;
 				case SDLK_d:
 					if (event.key.keysym.mod & KMOD_SHIFT)
 						asm("int3":::);
@@ -105,7 +105,7 @@ int main (int argc, char** argv)
 
 	for (Input_state input; !input.poll_events().should_quit; ) {
 		wait_fps(60);
-		if (!input.should_freeze_field)
+		if (input.should_update_field)
 			gfx::fieldviz_update();
 		gfx::fieldviz_draw(input.should_clear_frame);
 		gfx::present_frame();

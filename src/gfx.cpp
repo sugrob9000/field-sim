@@ -36,7 +36,7 @@ struct Context {
 			FATAL("Failed to initialize SDL: {}", SDL_GetError());
 
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 		if (cfg.msaa_samples)
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, cfg.msaa_samples);
@@ -73,7 +73,11 @@ struct Context {
 			glDebugMessageCallback(gl::debug_message_callback, nullptr);
 		}
 
-		MESSAGE("Renderer is '{}' by '{}'", gl::get_string(GL_RENDERER), gl::get_string(GL_VENDOR));
+		MESSAGE("Renderer is '{}' by '{}', driver '{}'",
+				gl::get_string(GL_RENDERER),
+				gl::get_string(GL_VENDOR),
+				gl::get_string(GL_VERSION));
+
 		gl::poll_errors_and_die("context init");
 
 		{ // Initialize field vizualization
@@ -115,11 +119,11 @@ struct Field_viz {
 
 	unsigned current_tick = 0;
 
-	// Particles are stored in a linear buffer (left->right, top->bottom). Each particle
-	// has a "head" and a "tail", which are 2d points. Those are used both to draw the
-	// particle and to calculate its new position in a compute pass
-	// Particle coordinates are such that neighbors in the grid are 1 apart
-
+	// Particles are stored in a buffer: 2x vec2 per particle, "head" and "tail". This buffer
+	// is used both to draw the particle and to calculate its new position in a compute pass.
+	// Particle coordinates are such that neighbors in the grid are 1 unit apart
+	// TODO: this means that if the grid is made smaller, individual units are larger on the
+	// screen, greatly affecting the way the simulation looks
 	gl::Buffer particles_buffer;
 	gl::Vertex_array lines_vao;
 
@@ -196,11 +200,6 @@ struct Field_viz {
 
 			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
 			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
-		}
-
-		{
-			auto some_texture = gl::Texture::create(GL_TEXTURE_2D);
-			glTextureStorage2D(some_texture.get(), 1, GL_RGB8, 1000, 1000);
 		}
 
 		draw_particles_program = gl::Program::from_frag_vert("lines.frag", "lines.vert");

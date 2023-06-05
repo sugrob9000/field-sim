@@ -53,8 +53,8 @@ void message (const char* prefix, const Fmt& format, Args&&... args)
 		::detail::message("Fatal: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__); \
 		::std::exit(1); \
 	} while (false)
-#define WARNING(F, ...) ::detail::message("Warning: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
-#define MESSAGE(F, ...) ::detail::message("Info: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__)
+#define WARNING(F, ...) (::detail::message("Warning: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__))
+#define MESSAGE(F, ...) (::detail::message("Info: ", FMT_STRING(F) __VA_OPT__(,) __VA_ARGS__))
 
 // A barebones pre-C++23 implementation of start_lifetime_as (missing const, _array, etc)
 // Cannot be made constexpr without compiler support, otherwise works

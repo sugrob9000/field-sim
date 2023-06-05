@@ -1,7 +1,7 @@
-#define LOCAL_SIZE_X 32
-#define LOCAL_SIZE_Y 32
-#define GROUP_SIZE (LOCAL_SIZE_X * LOCAL_SIZE_Y)
-layout (local_size_x = LOCAL_SIZE_X, local_size_y = LOCAL_SIZE_Y, local_size_z = 1) in;
+const uint local_x = 32;
+const uint local_y = 32;
+const uint group_size = local_x * local_y;
+layout (local_size_x = local_x, local_size_y = local_y, local_size_z = 1) in;
 
 struct Particle { vec2 front, back; };
 layout (std430, binding = 0) buffer SSBO_particles { Particle particles[]; };
@@ -52,7 +52,7 @@ vec2 velocity_at (vec2 p)
 void main ()
 {
 	uint wg_index = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
-	uint id = wg_index * GROUP_SIZE + gl_LocalInvocationIndex;
+	uint id = wg_index * group_size + gl_LocalInvocationIndex;
 
 	uint random = 1664525 * id + 1013904223;
 	random ^= (random << 13);

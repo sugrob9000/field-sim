@@ -17,7 +17,16 @@ void debug_message_callback
 (GLenum src, GLenum type, GLuint id, GLenum severe,
  GLsizei len, const char* msg, const void* param);
 
-inline std::string_view get_string (GLenum id) { return reinterpret_cast<const char*>(glGetString(id)); }
+
+inline std::string_view get_string (GLenum name)
+{
+	return reinterpret_cast<const char*>(glGetString(name));
+}
+
+inline std::string_view get_string (GLenum name, GLuint index)
+{
+	return reinterpret_cast<const char*>(glGetStringi(name, index));
+}
 
 // ============================== OpenGL handle wrappers ==============================
 namespace detail {
