@@ -66,15 +66,3 @@ template <typename T> T* start_lifetime_as (void* p) requires std::is_trivial_v<
 	(void) *ptr; // Tell the abstract machine that we require a T there
 	return ptr;
 }
-
-// Static operator[] and operator() in C++23
-#ifdef __cpp_static_call_operator
-#define STATIC_CALL_OP static
-#else
-#define STATIC_CALL_OP
-#endif
-#ifdef __cpp_multidimensional_subscript
-#define STATIC_SUBSCRIPT_OP static
-#else
-#define STATIC_SUBSCRIPT_OP
-#endif

@@ -42,17 +42,16 @@ void debug_message_callback
  [[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
  [[maybe_unused]] const void* param)
 {
-	constexpr auto format = "OpenGL: {}";
 	switch (severe) {
 	case GL_DEBUG_SEVERITY_HIGH:
-		FATAL(format, msg);
+		FATAL("OpenGL: {}", msg);
 		break;
 	case GL_DEBUG_SEVERITY_MEDIUM:
-		WARNING(format, msg);
+		WARNING("OpenGL: {}", msg);
 		break;
 	case GL_DEBUG_SEVERITY_LOW:
 	case GL_DEBUG_SEVERITY_NOTIFICATION:
-		MESSAGE(format, msg);
+		MESSAGE("OpenGL: {}", msg);
 		break;
 	}
 }

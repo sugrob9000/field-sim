@@ -315,7 +315,7 @@ struct Field_viz {
 			glUniform2ui(unif_loc_workgroup_size, workgroup_size.x, workgroup_size.y);
 			glUniform2ui(unif_loc_workgroup_num, dispatch_size.x, dispatch_size.y);
 
-			// If viewport is too wide, cut off top & bottom; if too tall, cut off left & right
+			// If viewport is too wide, cut off left & right; if too tall, cut off top & bottom
 			float aspect = (float) grid_size.x * res.y / (grid_size.y * res.x);
 			glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
 		}
