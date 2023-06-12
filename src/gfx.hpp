@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gl.hpp"
+#include "util/singleton.hpp"
 
 namespace gfx {
 struct Config {
@@ -10,6 +11,11 @@ struct Config {
 	unsigned particles_x = 0, particles_y = 0;  // 0 for auto
 	unsigned particle_lifetime = 200;
 	unsigned particle_spacing = 2;
+};
+
+struct Init_lock: Singleton_lock<Init_lock> {
+	Init_lock (const Config&);
+	~Init_lock ();
 };
 
 void init (const Config&);

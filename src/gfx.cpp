@@ -13,35 +13,21 @@ struct Field_viz_config {
 	unsigned particle_lifetime;
 };
 
-static void fieldviz_init (const Field_viz_config&);
-static void fieldviz_deinit ();
+// TODO: use fieldviz as a proper class and not a global resource
+struct Field_viz_init_lock: Singleton_lock<Field_viz_init_lock> {
+	Field_viz_init_lock (const Field_viz_config&);
+	~Field_viz_init_lock ();
+};
 static void fieldviz_ensure_least_framebuffer_size (Resolution);
 
 // ========================= Rendering context setup & handling =========================
 
 using Unique_SDL_Window = Unique_handle<SDL_Window*, Simple_deleter<SDL_DestroyWindow>>;
 using Unique_SDL_GLContext = Unique_handle<SDL_GLContext, Simple_deleter<SDL_GL_DeleteContext>>;
-
-struct SDL_initialization {
-	SDL_initialization () {
+struct SDL_init_lock: Singleton_lock<SDL_init_lock> {
+	SDL_init_lock (const Config& cfg) {
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
 			FATAL("Failed to initialize SDL: {}", SDL_GetError());
-	}
-	~SDL_initialization () { SDL_Quit(); }
-};
-
-struct Context {
-	Resolution resolution;
-	SDL_initialization sdl_init;
-	Unique_SDL_Window window;
-	Unique_SDL_GLContext glcontext;
-
-	explicit Context (const Config& cfg)
-		: resolution{ cfg.screen_res_x, cfg.screen_res_y }
-	{
-		constexpr Resolution min_res = { 100, 100 };
-		if (resolution.x < min_res.x || resolution.y < min_res.y)
-			FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
 
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
@@ -50,43 +36,61 @@ struct Context {
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, cfg.msaa_samples);
 
 		SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
+	}
+	~SDL_init_lock () { SDL_Quit(); }
+};
 
-		window.reset(SDL_CreateWindow(nullptr,
-				SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-				resolution.x, resolution.y,
-				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE));
-		if (!window) FATAL("Failed to create SDL window: {}", SDL_GetError());
+struct Context {
+	Resolution resolution;
+	[[no_unique_address]] SDL_init_lock sdl_init;
+	Unique_SDL_Window window;
+	Unique_SDL_GLContext glcontext;
+	[[no_unique_address]] Field_viz_init_lock fieldviz_init;
 
-		glcontext.reset(SDL_GL_CreateContext(window.get()));
-		if (!glcontext) FATAL("Failed to create SDL context: {}", SDL_GetError());
+	// C++ has no natural way to perform additional actions inbetween member initializers,
+	// so we use lambdas here. This would not work in all cases (no saving variables between
+	// initializers other than members, nowhere to put lambda without arguments, ...
+	explicit Context (const Config& cfg)
+		: resolution(cfg.screen_res_x, cfg.screen_res_y),
+		sdl_init(cfg),
 
-		glewExperimental = true;
-		if (glewInit() != GLEW_OK)
-			FATAL("Failed to initialize GLEW");
+		window([&, this] {
+			constexpr Resolution min_res = { 100, 100 };
+			if (resolution.x < min_res.x || resolution.y < min_res.y)
+				FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
+			auto result = SDL_CreateWindow(nullptr,
+					SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+					resolution.x, resolution.y,
+					SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+			if (!result) FATAL("Failed to create SDL window: {}", SDL_GetError());
+			return result;
+		}()),
 
-		SDL_GL_SetSwapInterval(1);
+		glcontext([&, this] {
+			auto result = SDL_GL_CreateContext(window.get());
+			if (!result) FATAL("Failed to create GL context: {}", SDL_GetError());
+			glewExperimental = true;
+			if (glewInit() != GLEW_OK) FATAL("Failed to initialize GLEW");
 
-		if (cfg.msaa_samples)
-			glEnable(GL_MULTISAMPLE);
+			SDL_GL_SetSwapInterval(1);
 
-		glEnable(GL_BLEND);
+			if (cfg.msaa_samples)
+				glEnable(GL_MULTISAMPLE);
 
-		SDL_SetWindowTitle(window.get(), "Vector fields");
+			glEnable(GL_BLEND);
 
-		if (cfg.debug) {
-			INFO("Enabling verbose OpenGL debugging");
-			glEnable(GL_DEBUG_OUTPUT);
-			glDebugMessageCallback(gl::debug_message_callback, nullptr);
-		}
+			SDL_SetWindowTitle(window.get(), "Vector fields");
 
-		INFO("Renderer is '{}' by '{}', driver/version '{}'",
-				gl::get_string(GL_RENDERER),
-				gl::get_string(GL_VENDOR),
-				gl::get_string(GL_VERSION));
+			if (cfg.debug) {
+				INFO("Enabling verbose OpenGL debugging");
+				glEnable(GL_DEBUG_OUTPUT);
+				glDebugMessageCallback(gl::debug_message_callback, nullptr);
+			}
 
-		gl::poll_errors_and_die("context init");
+			return result;
+		}()),
 
-		{ // Initialize field vizualization
+		fieldviz_init([&, this] {
 			Field_viz_config fvcfg = {
 				.particle_grid_size { cfg.particles_x, cfg.particles_y },
 				.particle_lifetime = cfg.particle_lifetime
@@ -96,14 +100,14 @@ struct Context {
 				if (fvcfg.particle_grid_size[i] == 0)
 					fvcfg.particle_grid_size[i] = resolution[i] / spacing;
 			}
-			fieldviz_init(fvcfg);
-			fieldviz_ensure_least_framebuffer_size(resolution);
-		}
-	}
-
-	~Context () {
-		fieldviz_deinit();
-		gl::poll_errors_and_die("context deinit");
+			return fvcfg;
+		}())
+	{
+		fieldviz_ensure_least_framebuffer_size(resolution);
+		INFO("Renderer is '{}' by '{}', driver/version '{}'",
+				gl::get_string(GL_RENDERER),
+				gl::get_string(GL_VENDOR),
+				gl::get_string(GL_VERSION));
 	}
 
 	void update_resolution (Resolution res) {
@@ -329,20 +333,13 @@ struct Field_viz {
 	}
 };
 
-// ============================= Shallow free function API =============================
+// ================================= Shallow public API =================================
 
-static Deferred_init<Context> global_render_context;
+static Deferred_init_unchecked<Context> global_render_context;
 static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
-void init (const Config& cfg)
-{
-	global_render_context.init(cfg);
-}
-
-void deinit ()
-{
-	global_render_context.deinit();
-}
+Init_lock::Init_lock (const Config& cfg) { global_render_context.init(cfg); }
+Init_lock::~Init_lock () { global_render_context.deinit(); }
 
 void handle_sdl_event (const SDL_Event& event)
 {
@@ -356,29 +353,24 @@ void present_frame ()
 	SDL_GL_SwapWindow(global_render_context->window.get());
 }
 
-static void fieldviz_init (const Field_viz_config& cfg)
-{
-	global_fieldviz.init(cfg);
-}
-
-static void fieldviz_deinit ()
-{
-	global_fieldviz.deinit();
-}
-
 void fieldviz_draw (bool should_clear)
 {
 	global_fieldviz->draw(global_render_context->resolution, should_clear);
 }
 
-static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
-{
-	global_fieldviz->ensure_least_framebuffer_size(required_size);
-}
-
 void fieldviz_update ()
 {
 	global_fieldviz->advance_simulation();
+}
+
+// ================================ Shallow internal API ================================
+
+Field_viz_init_lock::Field_viz_init_lock (const Field_viz_config& cfg) { global_fieldviz.init(cfg); };
+Field_viz_init_lock::~Field_viz_init_lock () { global_fieldviz.deinit(); }
+
+static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
+{
+	global_fieldviz->ensure_least_framebuffer_size(required_size);
 }
 
 } // namespace gfx

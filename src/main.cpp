@@ -103,7 +103,7 @@ gfx::Config get_config (int argc, const char* const* argv)
 
 int main (int argc, char** argv)
 {
-	gfx::init(arg::get_config(argc, argv));
+	gfx::Init_lock gfx(arg::get_config(argc, argv));
 
 	for (Input_state input; !input.poll_events().should_quit; ) {
 		wait_fps(60);
@@ -112,6 +112,4 @@ int main (int argc, char** argv)
 		gfx::fieldviz_draw(input.should_clear_frame);
 		gfx::present_frame();
 	}
-
-	gfx::deinit();
 }
