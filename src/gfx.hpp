@@ -9,6 +9,7 @@ struct Config {
 	unsigned msaa_samples = 0;  // 0 for no MSAA
 	unsigned particles_x = 0, particles_y = 0;  // 0 for auto
 	unsigned particle_lifetime = 200;
+	unsigned particle_spacing = 2;
 };
 
 void init (const Config&);

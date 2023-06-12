@@ -8,8 +8,10 @@
 
 // Unique_handle:
 //
-// Like std::unique_ptr, but for arbitrary integer handles, not just pointers. Still
-// requires one possible "null" value, but it can be any value (0, -1, etc.)
+// Like std::unique_ptr, but for arbitrary integer handles, not just pointers.
+// Does not provide pointer passthrough semantics (so even if Id is a pointer, it should
+// act like an opaque handle).
+// Still requires one possible "null" value, but it can be any value (0, -1, etc.)
 //
 // A stateless deleter is required. Function and function pointer types are not stateless.
 // Their type only represents the signature, which is not enough information for a call.
@@ -42,12 +44,18 @@
 
 
 namespace detail {
-//
+template <typename T> concept Handle = std::integral<T> || std::is_pointer_v<T>;
 template <typename T, typename Id> concept Stateless_deleter
-	= std::is_empty_v<T> && !std::is_pointer_v<T> && !std::is_function_v<T>;
+	= Handle<Id> && std::is_empty_v<T>
+	&& !std::is_pointer_v<T>   // pointers to functions aren't statless
+	&& !std::is_function_v<T>; // function types cannot be meaningfully stored, + see above
 }
 
-template <std::integral Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
+template <auto F> struct Simple_deleter {
+	void operator() (detail::Handle auto id) const noexcept { F(id); }
+};
+
+template <detail::Handle Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
 class Unique_handle {
 	Id id = null_handle;
 	[[nodiscard]] Id disown () {
@@ -97,6 +105,7 @@ public:
 	void swap (Unique_handle& other) { std::swap(id, other.id); }
 
 	operator bool () const { return id != null_handle; }
+	auto operator<=> (const Unique_handle& other) const = default;
 };
 
 

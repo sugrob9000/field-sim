@@ -46,6 +46,7 @@ vec2 velocity_at (vec2 p)
 	float vel2 = dot(vel,vel);
 	if (vel2 > MAX_VELOCITY * MAX_VELOCITY)
 		vel *= MAX_VELOCITY / sqrt(vel2);
+
 	return vel;
 }
 

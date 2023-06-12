@@ -19,11 +19,22 @@ static void fieldviz_ensure_least_framebuffer_size (Resolution);
 
 // ========================= Rendering context setup & handling =========================
 
+using Unique_SDL_Window = Unique_handle<SDL_Window*, Simple_deleter<SDL_DestroyWindow>>;
+using Unique_SDL_GLContext = Unique_handle<SDL_GLContext, Simple_deleter<SDL_GL_DeleteContext>>;
+
+struct SDL_initialization {
+	SDL_initialization () {
+		if (SDL_Init(SDL_INIT_VIDEO) < 0)
+			FATAL("Failed to initialize SDL: {}", SDL_GetError());
+	}
+	~SDL_initialization () { SDL_Quit(); }
+};
+
 struct Context {
 	Resolution resolution;
-
-	SDL_Window* window;
-	SDL_GLContext glcontext;
+	SDL_initialization sdl_init;
+	Unique_SDL_Window window;
+	Unique_SDL_GLContext glcontext;
 
 	explicit Context (const Config& cfg)
 		: resolution{ cfg.screen_res_x, cfg.screen_res_y }
@@ -31,9 +42,6 @@ struct Context {
 		constexpr Resolution min_res = { 100, 100 };
 		if (resolution.x < min_res.x || resolution.y < min_res.y)
 			FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
-
-		if (SDL_Init(SDL_INIT_VIDEO) < 0)
-			FATAL("Failed to initialize SDL: {}", SDL_GetError());
 
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
@@ -43,16 +51,14 @@ struct Context {
 
 		SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
-		window = SDL_CreateWindow(nullptr,
+		window.reset(SDL_CreateWindow(nullptr,
 				SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 				resolution.x, resolution.y,
-				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-		if (window == nullptr)
-			FATAL("Failed to create SDL window: {}", SDL_GetError());
+				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE));
+		if (!window) FATAL("Failed to create SDL window: {}", SDL_GetError());
 
-		glcontext = SDL_GL_CreateContext(window);
-		if (!glcontext)
-			FATAL("Failed to create SDL context: {}", SDL_GetError());
+		glcontext.reset(SDL_GL_CreateContext(window.get()));
+		if (!glcontext) FATAL("Failed to create SDL context: {}", SDL_GetError());
 
 		glewExperimental = true;
 		if (glewInit() != GLEW_OK)
@@ -65,15 +71,15 @@ struct Context {
 
 		glEnable(GL_BLEND);
 
-		SDL_SetWindowTitle(window, "Vector fields");
+		SDL_SetWindowTitle(window.get(), "Vector fields");
 
 		if (cfg.debug) {
-			MESSAGE("Enabling verbose OpenGL debugging");
+			INFO("Enabling verbose OpenGL debugging");
 			glEnable(GL_DEBUG_OUTPUT);
 			glDebugMessageCallback(gl::debug_message_callback, nullptr);
 		}
 
-		MESSAGE("Renderer is '{}' by '{}', driver '{}'",
+		INFO("Renderer is '{}' by '{}', driver/version '{}'",
 				gl::get_string(GL_RENDERER),
 				gl::get_string(GL_VENDOR),
 				gl::get_string(GL_VERSION));
@@ -81,14 +87,14 @@ struct Context {
 		gl::poll_errors_and_die("context init");
 
 		{ // Initialize field vizualization
-			constexpr int default_spacing = 2;
 			Field_viz_config fvcfg = {
 				.particle_grid_size { cfg.particles_x, cfg.particles_y },
 				.particle_lifetime = cfg.particle_lifetime
 			};
+			const unsigned spacing = cfg.particle_spacing ? cfg.particle_spacing : 2;
 			for (int i: { 0, 1 }) {
 				if (fvcfg.particle_grid_size[i] == 0)
-					fvcfg.particle_grid_size[i] = resolution[i] / default_spacing;
+					fvcfg.particle_grid_size[i] = resolution[i] / spacing;
 			}
 			fieldviz_init(fvcfg);
 			fieldviz_ensure_least_framebuffer_size(resolution);
@@ -97,12 +103,7 @@ struct Context {
 
 	~Context () {
 		fieldviz_deinit();
-
 		gl::poll_errors_and_die("context deinit");
-
-		SDL_GL_DeleteContext(glcontext);
-		SDL_DestroyWindow(window);
-		SDL_Quit();
 	}
 
 	void update_resolution (Resolution res) {
@@ -169,7 +170,7 @@ struct Field_viz {
 		grid_size *= workgroup_size;
 
 		if (unsigned num_particles = get_total_particles())
-			MESSAGE("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, num_particles);
+			INFO("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, num_particles);
 		else
 			FATAL("The number of particles got rounded down to zero. Try larger grid");
 
@@ -222,18 +223,17 @@ struct Field_viz {
 			num_vortices = 0;
 			num_pushers = 0;
 			const auto add_vortex = [&] (float x, float y, float f) {
-				m.vortices[num_vortices++] = { .position = { x, y }, .force = f };
+				m.vortices[num_vortices++] = { .position = { w*x, h*y }, .force = f };
 			};
 			const auto add_pusher = [&] (float x, float y, float f) {
-				m.pushers[num_pushers++] = { .position = { x, y }, .force = f };
+				m.pushers[num_pushers++] = { .position = { w*x, h*y }, .force = f };
 			};
 
-			add_vortex(w*0.5, h*0.5, 200);
-			add_vortex(w*0.2, h*0.1, 70*sin(sec * 0.5));
-			add_vortex(w*0.3, h*0.3, 70*cos(sec * 0.5));
-
-			add_pusher(w*0.3, h*0.9, 200*sin(sec));
-			add_pusher(w*0.7, h*0.5, 75 + 75*sin(sec * 1.5f));
+			add_vortex(0.5, 0.5, 200);
+			add_vortex(0.2, 0.1, 70*sin(sec * 0.5));
+			add_vortex(0.3, 0.3, 70*cos(sec * 0.5));
+			add_pusher(0.3, 0.9, 200*sin(sec));
+			add_pusher(0.7, 0.5, 75 + 75*sin(sec * 1.5f));
 		}
 
 		glUseProgram(update_particles_program.get());
@@ -353,7 +353,7 @@ void handle_sdl_event (const SDL_Event& event)
 void present_frame ()
 {
 	gl::poll_errors_and_warn("latest frame");
-	SDL_GL_SwapWindow(global_render_context->window);
+	SDL_GL_SwapWindow(global_render_context->window.get());
 }
 
 static void fieldviz_init (const Field_viz_config& cfg)

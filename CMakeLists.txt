@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 project(field-sim CXX)
 
-if(CMAKE_BUILD_TYPE STREQUAL Release)
-	message(STATUS "LTO enabled")
-	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 set(CMAKE_CXX_STANDARD 20)
 set(src-dir src)
@@ -40,14 +37,14 @@ target_link_libraries(${exec}
 if(CMAKE_COMPILER_IS_GNUCXX)
 	message(STATUS "Enabling GCC-specific configuration")
 
-	set(cxx-gnu-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
-	target_compile_options(${exec} PRIVATE ${cxx-gnu-warnings})
-	target_compile_options(${exec} PRIVATE -fmax-errors=1)
+	set(gnu-cxx-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
+	target_compile_options(${exec} PRIVATE ${gnu-cxx-warnings} -fmax-errors=1)
 
-	if (CMAKE_BUILD_TYPE STREQUAL Debug)
-		target_compile_options(${exec} PRIVATE -fsanitize=undefined -Og)
-		target_link_options(${exec} PRIVATE -fsanitize=undefined)
-	endif()
+	set(gnu-debug-compile-options -fsanitize=undefined -Og)
+	set(gnu-debug-link-options -fsanitize=undefined)
+
+	target_compile_options(${exec} PRIVATE $<$<CONFIG:Debug>:${gnu-debug-compile-options}>)
+	target_link_options(${exec} PRIVATE $<$<CONFIG:Debug>:${gnu-debug-link-options}>)
 else()
 	message(STATUS "Compiler other than GCC - will miss some options")
 endif()

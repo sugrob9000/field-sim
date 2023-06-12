@@ -51,7 +51,7 @@ void debug_message_callback
 		break;
 	case GL_DEBUG_SEVERITY_LOW:
 	case GL_DEBUG_SEVERITY_NOTIFICATION:
-		MESSAGE("OpenGL: {}", msg);
+		INFO("OpenGL: {}", msg);
 		break;
 	}
 }

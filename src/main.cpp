@@ -81,8 +81,10 @@ gfx::Config get_config (int argc, const char* const* argv)
 			parse_resolution(arg.substr(sizeof("grid=")-1), cfg.particles_x, cfg.particles_y);
 		else if (arg.starts_with("life="))
 			parse_number(arg.substr(sizeof("life=")-1), cfg.particle_lifetime);
+		else if (arg.starts_with("spacing="))
+			parse_number(arg.substr(sizeof("spacing=")-1), cfg.particle_spacing);
 		else
-			throw Arg_parse_exception { .subject = arg, .defect = "is not a known option" };
+			throw Arg_parse_exception { .subject = arg, .defect = "is not a valid option" };
 	};
 
 	for (int i = 1; i < argc; i++) {
