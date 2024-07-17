@@ -14,10 +14,8 @@ struct Field_viz_config {
 };
 
 // TODO: use fieldviz as a proper class and not a global resource
-struct Field_viz_init_lock: Singleton_lock<Field_viz_init_lock> {
-	Field_viz_init_lock (const Field_viz_config&);
-	~Field_viz_init_lock ();
-};
+static void fieldviz_init (const Field_viz_config&);
+static void fieldviz_deinit ();
 static void fieldviz_ensure_least_framebuffer_size (Resolution);
 
 // ========================= Rendering context setup & handling =========================
@@ -42,73 +40,73 @@ struct SDL_init_lock: Singleton_lock<SDL_init_lock> {
 
 struct Context {
 	Resolution resolution;
-	[[no_unique_address]] SDL_init_lock sdl_init;
+	SDL_init_lock sdl_init [[no_unique_address]];
 	Unique_SDL_Window window;
 	Unique_SDL_GLContext glcontext;
-	[[no_unique_address]] Field_viz_init_lock fieldviz_init;
 
-	// C++ has no natural way to perform additional actions inbetween member initializers,
-	// so we use lambdas here. This would not work in all cases (no saving variables between
-	// initializers other than members, nowhere to put lambda without arguments, ...
-	explicit Context (const Config& cfg)
-		: resolution(cfg.screen_res_x, cfg.screen_res_y),
-		sdl_init(cfg),
+	std::string_view renderer_name;
+	std::string_view vendor_name;
+	std::string_view driver_name;
 
-		window([&, this] {
-			constexpr Resolution min_res = { 100, 100 };
-			if (resolution.x < min_res.x || resolution.y < min_res.y)
-				FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
-			auto result = SDL_CreateWindow(nullptr,
-					SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-					resolution.x, resolution.y,
-					SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-			if (!result) FATAL("Failed to create SDL window: {}", SDL_GetError());
-			return result;
-		}()),
-
-		glcontext([&, this] {
-			auto result = SDL_GL_CreateContext(window.get());
-			if (!result) FATAL("Failed to create GL context: {}", SDL_GetError());
-			glewExperimental = true;
-			if (glewInit() != GLEW_OK) FATAL("Failed to initialize GLEW");
-
-			SDL_GL_SetSwapInterval(1);
-
-			if (cfg.msaa_samples)
-				glEnable(GL_MULTISAMPLE);
-
-			glEnable(GL_BLEND);
-
-			SDL_SetWindowTitle(window.get(), "Vector fields");
-
-			if (cfg.debug) {
-				INFO("Enabling verbose OpenGL debugging");
-				glEnable(GL_DEBUG_OUTPUT);
-				glDebugMessageCallback(gl::debug_message_callback, nullptr);
-			}
-
-			return result;
-		}()),
-
-		fieldviz_init([&, this] {
-			Field_viz_config fvcfg = {
-				.particle_grid_size { cfg.particles_x, cfg.particles_y },
-				.particle_lifetime = cfg.particle_lifetime
-			};
-			const unsigned spacing = cfg.particle_spacing ? cfg.particle_spacing : 2;
-			for (int i: { 0, 1 }) {
-				if (fvcfg.particle_grid_size[i] == 0)
-					fvcfg.particle_grid_size[i] = resolution[i] / spacing;
-			}
-			return fvcfg;
-		}())
+	explicit Context (const Config& cfg):
+		resolution(cfg.screen_res_x, cfg.screen_res_y),
+		sdl_init(cfg)
 	{
+		constexpr Resolution min_res = { 100, 100 };
+		if (resolution.x < min_res.x || resolution.y < min_res.y)
+			FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
+		window.reset(SDL_CreateWindow(nullptr,
+				SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+				resolution.x, resolution.y,
+				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE));
+		if (!window)
+			FATAL("Failed to create SDL window: {}", SDL_GetError());
+
+		glcontext.reset(SDL_GL_CreateContext(window.get()));
+		if (!glcontext)
+			FATAL("Failed to create GL context: {}", SDL_GetError());
+
+		glewExperimental = true;
+		if (glewInit() != GLEW_OK)
+			FATAL("Failed to initialize GLEW");
+
+		SDL_GL_SetSwapInterval(1);
+
+		if (cfg.msaa_samples)
+			glEnable(GL_MULTISAMPLE);
+
+		glEnable(GL_BLEND);
+
+		SDL_SetWindowTitle(window.get(), "Vector fields");
+
+		if (cfg.debug) {
+			INFO("Enabling verbose OpenGL debugging");
+			glEnable(GL_DEBUG_OUTPUT);
+			glDebugMessageCallback(gl::debug_message_callback, nullptr);
+		}
+
+		Field_viz_config field_viz_cfg = {
+			.particle_grid_size { cfg.particles_x, cfg.particles_y },
+			.particle_lifetime = cfg.particle_lifetime
+		};
+		const unsigned spacing = cfg.particle_spacing ? cfg.particle_spacing : 2;
+		for (int i: { 0, 1 }) {
+			if (field_viz_cfg.particle_grid_size[i] == 0)
+				field_viz_cfg.particle_grid_size[i] = resolution[i] / spacing;
+		}
+
+		fieldviz_init(field_viz_cfg);
 		fieldviz_ensure_least_framebuffer_size(resolution);
+
+		renderer_name = gl::get_string(GL_RENDERER);
+		vendor_name = gl::get_string(GL_VENDOR);
+		driver_name = gl::get_string(GL_VERSION);
+
 		INFO("Renderer is '{}' by '{}', driver/version '{}'",
-				gl::get_string(GL_RENDERER),
-				gl::get_string(GL_VENDOR),
-				gl::get_string(GL_VERSION));
+				renderer_name, vendor_name, driver_name);
 	}
+
+	~Context () { fieldviz_deinit(); }
 
 	void update_resolution (Resolution res) {
 		this->resolution = res;
@@ -365,8 +363,8 @@ void fieldviz_update ()
 
 // ================================ Shallow internal API ================================
 
-Field_viz_init_lock::Field_viz_init_lock (const Field_viz_config& cfg) { global_fieldviz.init(cfg); };
-Field_viz_init_lock::~Field_viz_init_lock () { global_fieldviz.deinit(); }
+static void fieldviz_init (const Field_viz_config& cfg) { global_fieldviz.init(cfg); }
+static void fieldviz_deinit () { global_fieldviz.deinit(); }
 
 static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
 {

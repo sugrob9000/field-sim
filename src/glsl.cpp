@@ -5,8 +5,6 @@
 #include <memory>
 #include <optional>
 
-using std::string_view;
-
 namespace gl {
 // ============================= Shader sources from files =============================
 // A dumb implementation that supports #include, but leaves other preprocessing
@@ -22,10 +20,10 @@ class File_source {
 	std::string src;
 	std::string original_path;
 
-	static std::optional<string_view> try_get_include_filename (string_view line) {
+	static std::optional<std::string_view> try_get_include_filename (std::string_view line) {
 		using std::find, std::find_if, std::find_if_not;
 		constexpr int (*is_space) (int) = std::isspace; // resolve overload
-		constexpr string_view keyword = "include";
+		constexpr std::string_view keyword = "include";
 
 		auto end = line.end();
 		auto hash = find_if_not(line.begin(), end, is_space);
@@ -42,20 +40,24 @@ class File_source {
 
 		auto directive_end = directive_begin + keyword.size();
 		if (!is_space(*directive_end)
-		|| string_view{directive_begin, directive_end} != keyword)
+		|| std::string_view{directive_begin, directive_end} != keyword)
 			return {};
 
 		auto file_begin = find_if_not(directive_end+1, end, is_space);
 		if (file_begin == end)
 			return {};
 
-		if (*file_begin == '\"')
-			return string_view{ file_begin+1, find(file_begin+1, end, '\"') };
-		else
-			return string_view{ file_begin, find_if(file_begin+1, end, is_space) };
+		if (*file_begin == '\"') {
+			file_begin++;
+			auto closing_quote = find(file_begin, end, '\"');
+			return std::string_view{ file_begin, closing_quote };
+		} else {
+			auto end_of_word = find_if(file_begin+1, end, is_space);
+			return std::string_view{ file_begin, end_of_word };
+		}
 	}
 
-	void append_line_directive (unsigned long line_nr, [[maybe_unused]] string_view name) {
+	void append_line_directive (unsigned long line_nr, std::string_view name) {
 		auto out = std::back_inserter(src);
 		if constexpr (line_directive_has_filename)
 			fmt::format_to(out, FMT_STRING("#line {} \"{}{}\"\n"), line_nr, source_dir, name);
@@ -63,7 +65,7 @@ class File_source {
 			fmt::format_to(out, FMT_STRING("#line {}\n"), line_nr);
 	}
 
-	void append_from_file (string_view path, int recurse) {
+	void append_from_file (std::string_view path, int recurse) {
 		if (constexpr int limit = 20; recurse > limit) {
 			FATAL("Shader '{}{}' has a recursive #include chain of depth > {}",
 					source_dir, original_path, limit);
@@ -96,8 +98,12 @@ class File_source {
 	}
 
 public:
-	explicit File_source (string_view path)
-		: original_path{path} { append_from_file(path, 0); }
+	explicit File_source (std::string_view path):
+		original_path{path}
+	{
+		append_from_file(path, 0);
+	}
+
 	operator std::string () && { return std::move(src); }
 };
 
@@ -110,7 +116,7 @@ constexpr static const char shader_prologue[] =
 
 // `src` is std::string because we need zero-termination for glShaderSource,
 // so would have made a std::string anyway
-static Shader compile_shader (Shader::Type type, const std::string& src, string_view name)
+static Shader compile_shader (Shader::Type type, const std::string& src, std::string_view name)
 {
 	GLuint id = glCreateShader(static_cast<GLenum>(type));
 	if (id == 0)
@@ -133,12 +139,12 @@ static Shader compile_shader (Shader::Type type, const std::string& src, string_
 	return Shader(id);
 }
 
-Shader Shader::from_file (Type type, string_view file_path)
+Shader Shader::from_file (Type type, std::string_view file_path)
 {
 	return compile_shader(type, File_source{file_path}, file_path);
 }
 
-Shader Shader::from_source (Type type, string_view source)
+Shader Shader::from_source (Type type, std::string_view source)
 {
 	return compile_shader(type, std::string{source}, "<source string>");
 }
@@ -174,7 +180,7 @@ static GLuint link_program_low (std::span<const Shader> shaders)
 Program::Program (std::span<const Shader> shaders)
 	: Unique_handle(link_program_low(shaders)) { }
 
-Program Program::from_frag_vert (string_view frag_path, string_view vert_path)
+Program Program::from_frag_vert (std::string_view frag_path, std::string_view vert_path)
 {
 	Shader shaders[] = {
 		Shader::from_file(Shader::Type::fragment, frag_path),
@@ -183,7 +189,7 @@ Program Program::from_frag_vert (string_view frag_path, string_view vert_path)
 	return Program(shaders);
 }
 
-Program Program::from_compute (string_view compute_path)
+Program Program::from_compute (std::string_view compute_path)
 {
 	Shader shader[] = { Shader::from_file(Shader::Type::compute, compute_path) };
 	return Program(shader);

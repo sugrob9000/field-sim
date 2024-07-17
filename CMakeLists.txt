@@ -28,17 +28,19 @@ target_include_directories(${exec} PRIVATE ${src-dir})
 # SYSTEM to suppress warnings from libraries
 target_include_directories(${exec} SYSTEM PRIVATE ${libsrc-dir})
 
-target_link_libraries(${exec}
-	${SDL2_LIBRARIES}
-	${OPENGL_LIBRARIES}
-	${GLEW_LIBRARIES}
-	fmt::fmt)
+target_link_libraries(
+	${exec}
+	${SDL2_LIBRARIES} ${OPENGL_LIBRARIES} ${GLEW_LIBRARIES} fmt::fmt
+)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
 	message(STATUS "Enabling GCC-specific configuration")
 
-	set(gnu-cxx-warnings -Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing)
-	target_compile_options(${exec} PRIVATE ${gnu-cxx-warnings} -fmax-errors=1)
+	target_compile_options(
+		${exec} PRIVATE
+		-Wall -Wextra -Wpedantic -Wshadow -Wattributes -Wstrict-aliasing
+		-fmax-errors=1
+	)
 
 	set(gnu-debug-compile-options -fsanitize=undefined -Og)
 	set(gnu-debug-link-options -fsanitize=undefined)
@@ -49,7 +51,9 @@ else()
 	message(STATUS "Compiler other than GCC - will miss some options")
 endif()
 
-add_custom_target(run
+add_custom_target(
+	run
 	DEPENDS ${exec}
 	COMMAND ${exec}
-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
