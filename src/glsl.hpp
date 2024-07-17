@@ -8,17 +8,17 @@
 
 namespace gl {
 namespace detail {
-  struct Shader_deleter {
-    void operator()(GLuint id) {
-      glDeleteShader(id);
-    }
-  };
+struct Shader_deleter {
+  void operator()(GLuint id) {
+    glDeleteShader(id);
+  }
+};
 
-  struct Program_deleter {
-    void operator()(GLuint id) {
-      glDeleteProgram(id);
-    }
-  };
+struct Program_deleter {
+  void operator()(GLuint id) {
+    glDeleteProgram(id);
+  }
+};
 }  // namespace detail
 
 struct Shader: Unique_handle<GLuint, detail::Shader_deleter, 0> {

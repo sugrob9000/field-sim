@@ -49,7 +49,7 @@ KeepEmptyLinesAtEOF: false
 KeepEmptyLinesAtTheStartOfBlocks: false
 Language: Cpp
 MaxEmptyLinesToKeep: 2
-NamespaceIndentation: Inner
+NamespaceIndentation: None
 PenaltyBreakComment: 300
 PointerAlignment: Left
 QualifierAlignment: Left

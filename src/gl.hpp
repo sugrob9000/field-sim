@@ -33,32 +33,32 @@ inline std::string_view get_string(GLenum name, GLuint index) {
 
 // ============================== OpenGL handle wrappers ==============================
 namespace detail {
-  // Creation and deletion functions have their address taken, so:
-  // if the deleter is imported directly, `GL_xxx_func` is `void(*)(...)`.
-  // if it is imported by the loader via GetProcAddress, the name of the function
-  // resolves to a variable, and the type is is `void(**)(...)`.
-  // So, `GL_xxx_func` have to be `auto`, and dereferencing before calling works either way
+// Creation and deletion functions have their address taken, so:
+// if the deleter is imported directly, `GL_xxx_func` is `void(*)(...)`.
+// if it is imported by the loader via GetProcAddress, the name of the function
+// resolves to a variable, and the type is is `void(**)(...)`.
+// So, `GL_xxx_func` have to be `auto`, and dereferencing before calling works either way
 
-  template<auto GL_delete_func>
-  struct GL_obj_deleter {
-    void operator()(GLuint id) const noexcept {
-      (*GL_delete_func)(1, &id);
-    }
-  };
+template<auto GL_delete_func>
+struct GL_obj_deleter {
+  void operator()(GLuint id) const noexcept {
+    (*GL_delete_func)(1, &id);
+  }
+};
 
-  template<auto GL_create_func, auto GL_delete_func>
-  struct GL_basic_object: Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0> {
-    using Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0>::Unique_handle;
+template<auto GL_create_func, auto GL_delete_func>
+struct GL_basic_object: Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0> {
+  using Unique_handle<GLuint, GL_obj_deleter<GL_delete_func>, 0>::Unique_handle;
 
-    template<typename... Args>
-    static GL_basic_object create(Args... args)
-      requires requires(GLuint id) { (*GL_create_func)(args..., 1, &id); }
-    {
-      GLuint id;
-      (*GL_create_func)(args..., 1, &id);
-      return GL_basic_object(id);
-    }
-  };
+  template<typename... Args>
+  static GL_basic_object create(Args... args)
+    requires requires(GLuint id) { (*GL_create_func)(args..., 1, &id); }
+  {
+    GLuint id;
+    (*GL_create_func)(args..., 1, &id);
+    return GL_basic_object(id);
+  }
+};
 }  // namespace detail
 
 using Buffer = detail::GL_basic_object<&glCreateBuffers, &glDeleteBuffers>;

@@ -48,65 +48,65 @@ void wait_fps(int fps) {
 }
 
 namespace arg {
-  using std::string_view;
+using std::string_view;
 
-  struct Arg_parse_exception {
-    string_view subject;
-    string_view defect;
+struct Arg_parse_exception {
+  string_view subject;
+  string_view defect;
+};
+
+void parse_number(string_view arg, auto& x) {
+  auto [ptr, ec] = std::from_chars(arg.begin(), arg.end(), x);
+  if (ec != std::errc{}) {
+    throw Arg_parse_exception{.subject = arg, .defect = "is not a number"};
+  }
+}
+
+void parse_resolution(string_view arg, auto& x, auto& y) {
+  size_t delim = arg.find('x');
+  if (delim == arg.npos) {
+    throw Arg_parse_exception{.subject = arg, .defect = "has no delimiter (e.g. 200x200)"};
+  }
+  parse_number(arg.substr(0, delim), x);
+  parse_number(arg.substr(delim + 1), y);
+}
+
+gfx::Config get_config(int argc, const char* const* argv) {
+  gfx::Config cfg;
+
+  const auto process_argument = [&cfg](string_view arg) {
+    if (!arg.starts_with("--")) {
+      throw Arg_parse_exception{.subject = arg, .defect = "does not start with --"};
+    }
+    arg = arg.substr(2);
+    if (arg == "debug") {
+      cfg.debug = true;
+    } else if (arg == "no-debug") {
+      cfg.debug = false;
+    } else if (arg.starts_with("res=")) {
+      parse_resolution(arg.substr(sizeof("res=") - 1), cfg.screen_res_x, cfg.screen_res_y);
+    } else if (arg.starts_with("grid=")) {
+      parse_resolution(arg.substr(sizeof("grid=") - 1), cfg.particles_x, cfg.particles_y);
+    } else if (arg.starts_with("life=")) {
+      parse_number(arg.substr(sizeof("life=") - 1), cfg.particle_lifetime);
+    } else if (arg.starts_with("spacing=")) {
+      parse_number(arg.substr(sizeof("spacing=") - 1), cfg.particle_spacing);
+    } else {
+      throw Arg_parse_exception{.subject = arg, .defect = "is not a valid option"};
+    }
   };
 
-  void parse_number(string_view arg, auto& x) {
-    auto [ptr, ec] = std::from_chars(arg.begin(), arg.end(), x);
-    if (ec != std::errc{}) {
-      throw Arg_parse_exception{.subject = arg, .defect = "is not a number"};
+  for (int i = 1; i < argc; i++) {
+    string_view arg = argv[i];
+    try {
+      process_argument(arg);
+    } catch (Arg_parse_exception& ex) {
+      WARNING("Bad argument '{}': '{}' {}", arg, ex.subject, ex.defect);
     }
   }
 
-  void parse_resolution(string_view arg, auto& x, auto& y) {
-    size_t delim = arg.find('x');
-    if (delim == arg.npos) {
-      throw Arg_parse_exception{.subject = arg, .defect = "has no delimiter (e.g. 200x200)"};
-    }
-    parse_number(arg.substr(0, delim), x);
-    parse_number(arg.substr(delim + 1), y);
-  }
-
-  gfx::Config get_config(int argc, const char* const* argv) {
-    gfx::Config cfg;
-
-    const auto process_argument = [&cfg](string_view arg) {
-      if (!arg.starts_with("--")) {
-        throw Arg_parse_exception{.subject = arg, .defect = "does not start with --"};
-      }
-      arg = arg.substr(2);
-      if (arg == "debug") {
-        cfg.debug = true;
-      } else if (arg == "no-debug") {
-        cfg.debug = false;
-      } else if (arg.starts_with("res=")) {
-        parse_resolution(arg.substr(sizeof("res=") - 1), cfg.screen_res_x, cfg.screen_res_y);
-      } else if (arg.starts_with("grid=")) {
-        parse_resolution(arg.substr(sizeof("grid=") - 1), cfg.particles_x, cfg.particles_y);
-      } else if (arg.starts_with("life=")) {
-        parse_number(arg.substr(sizeof("life=") - 1), cfg.particle_lifetime);
-      } else if (arg.starts_with("spacing=")) {
-        parse_number(arg.substr(sizeof("spacing=") - 1), cfg.particle_spacing);
-      } else {
-        throw Arg_parse_exception{.subject = arg, .defect = "is not a valid option"};
-      }
-    };
-
-    for (int i = 1; i < argc; i++) {
-      string_view arg = argv[i];
-      try {
-        process_argument(arg);
-      } catch (Arg_parse_exception& ex) {
-        WARNING("Bad argument '{}': '{}' {}", arg, ex.subject, ex.defect);
-      }
-    }
-
-    return cfg;
-  }
+  return cfg;
+}
 }  // namespace arg
 }  // namespace
 
