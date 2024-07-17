@@ -44,128 +44,191 @@
 
 
 namespace detail {
-template <typename T> concept Handle = std::integral<T> || std::is_pointer_v<T>;
-template <typename T, typename Id> concept Stateless_deleter
-	= Handle<Id> && std::is_empty_v<T>
-	&& !std::is_pointer_v<T>   // pointers to functions aren't statless
-	&& !std::is_function_v<T>; // function types cannot be meaningfully stored, + see above
-}
+template<typename T> concept Handle = std::integral<T> || std::is_pointer_v<T>;
+template<typename T, typename Id>
+concept Stateless_deleter =
+  Handle<Id> && std::is_empty_v<T> && !std::is_pointer_v<T>  // pointers to functions aren't statless
+  && !std::is_function_v<T>;  // function types cannot be meaningfully stored, + see above
+}  // namespace detail
 
-template <auto F> struct Simple_deleter {
-	void operator() (detail::Handle auto id) const noexcept { F(id); }
+template<auto F>
+struct Simple_deleter {
+  void operator()(detail::Handle auto id) const noexcept {
+    F(id);
+  }
 };
 
-template <detail::Handle Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
+template<detail::Handle Id, detail::Stateless_deleter<Id> Deleter, Id null_handle = Id{}>
 class Unique_handle {
-	Id id = null_handle;
-	[[nodiscard]] Id disown () {
-		Id result = id;
-		id = null_handle;
-		return result;
-	}
+  Id id = null_handle;
+
+  [[nodiscard]] Id disown() {
+    Id result = id;
+    id = null_handle;
+    return result;
+  }
+
 public:
-	using value_type = Id;
-	using deleter_type = Deleter;
+  using value_type = Id;
+  using deleter_type = Deleter;
 
-	Unique_handle () = default;
-	explicit Unique_handle (Id id_): id{ id_ } { }
-	Unique_handle (const Unique_handle&) = delete;
-	Unique_handle (Unique_handle&& other) noexcept: id{ other.disown() } { }
-	Unique_handle& operator= (Id id_) { this->reset(id_); return *this; }
-	Unique_handle& operator= (const Unique_handle&) = delete;
-	Unique_handle& operator= (Unique_handle&& other) noexcept {
-		if (this != &other) {
-			(void) release();
-			id = other.disown();
-		}
-		return *this;
-	}
-	~Unique_handle () { (void) release(); }
+  Unique_handle() = default;
 
-	Deleter get_deleter () const { return {}; }
+  explicit Unique_handle(Id id_) : id{id_} {}
 
-	[[nodiscard]] Id release () {
-		if (id) get_deleter()(id);
-		return disown();
-	}
+  Unique_handle(const Unique_handle&) = delete;
 
-	[[nodiscard]] Id operator* () const { return this->get(); }
-	// operator-> makes no sense, there are no indirection passthrough semantics
+  Unique_handle(Unique_handle&& other) noexcept : id{other.disown()} {}
 
-	[[nodiscard]] Id get () const {
-		assert(id != null_handle);
-		return id;
-	}
+  Unique_handle& operator=(Id id_) {
+    this->reset(id_);
+    return *this;
+  }
 
-	void reset (Id new_id = null_handle) {
-		(void) release();
-		id = new_id;
-	}
+  Unique_handle& operator=(const Unique_handle&) = delete;
 
-	void swap (Unique_handle& other) { std::swap(id, other.id); }
+  Unique_handle& operator=(Unique_handle&& other) noexcept {
+    if (this != &other) {
+      (void) release();
+      id = other.disown();
+    }
+    return *this;
+  }
 
-	operator bool () const { return id != null_handle; }
-	auto operator<=> (const Unique_handle& other) const = default;
+  ~Unique_handle() {
+    (void) release();
+  }
+
+  Deleter get_deleter() const {
+    return {};
+  }
+
+  [[nodiscard]] Id release() {
+    if (id) {
+      get_deleter()(id);
+    }
+    return disown();
+  }
+
+  [[nodiscard]] Id operator*() const {
+    return this->get();
+  }
+
+  // operator-> makes no sense, there are no indirection passthrough semantics
+
+  [[nodiscard]] Id get() const {
+    assert(id != null_handle);
+    return id;
+  }
+
+  void reset(Id new_id = null_handle) {
+    (void) release();
+    id = new_id;
+  }
+
+  void swap(Unique_handle& other) {
+    std::swap(id, other.id);
+  }
+
+  operator bool() const {
+    return id != null_handle;
+  }
+
+  auto operator<=>(const Unique_handle& other) const = default;
 };
 
-
-template <typename T, detail::Stateless_deleter<T> Deleter = std::default_delete<T>>
+template<typename T, detail::Stateless_deleter<T> Deleter = std::default_delete<T>>
 class Unique_array {
-	std::unique_ptr<T[]> storage{};
-	size_t len = 0;
+  std::unique_ptr<T[]> storage{};
+  size_t len = 0;
 
 public:
-	using value_type = T;
-	using size_type = size_t;
-	using reference = T&;
-	using const_reference = const T&;
-	using pointer = T*;
-	using const_pointer = const T*;
-	using iterator = pointer;
-	using const_iterator = const_pointer;
+  using value_type = T;
+  using size_type = size_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
+  using iterator = pointer;
+  using const_iterator = const_pointer;
 
-	Unique_array () = default;
-	void reset () { storage.reset(); len = 0; }
+  Unique_array() = default;
 
-	Unique_array (T* ptr, size_t len_): storage(ptr), len{len_} {}
-	void reset (T* ptr, size_t len_) { storage.reset(ptr); len = len_; }
+  void reset() {
+    storage.reset();
+    len = 0;
+  }
 
-	Unique_array (Unique_array&& other)
-		: storage{ std::move(other.storage) }, len{ std::exchange(other.len, 0) } {}
-	void reset (Unique_array&& other) {
-		storage = std::move(other.storage);
-		len = std::exchange(other.len, 0);
-	}
-	Unique_array& operator= (Unique_array&& other) {
-		reset(other);
-		return *this;
-	}
+  Unique_array(T* ptr, size_t len_) : storage(ptr), len{len_} {}
 
-	Unique_array (const Unique_array&) = delete;
-	Unique_array& operator= (const Unique_array&) = delete;
-	void reset (const Unique_array&) = delete;
+  void reset(T* ptr, size_t len_) {
+    storage.reset(ptr);
+    len = len_;
+  }
 
-	[[nodiscard]] pointer data () { return storage.get(); }
-	[[nodiscard]] const_pointer data () const { return storage.get(); }
+  Unique_array(Unique_array&& other) : storage{std::move(other.storage)}, len{std::exchange(other.len, 0)} {}
 
-	[[nodiscard]] size_t size () const { return len; }
-	[[nodiscard]] bool empty () const { return len == 0; }
+  void reset(Unique_array&& other) {
+    storage = std::move(other.storage);
+    len = std::exchange(other.len, 0);
+  }
 
-	[[nodiscard]] iterator begin () { return storage.get(); }
-	[[nodiscard]] iterator end () { return begin() + len; }
-	[[nodiscard]] const_iterator begin () const { return storage.get(); }
-	[[nodiscard]] const_iterator end () const { return storage.get() + len; }
+  Unique_array& operator=(Unique_array&& other) {
+    reset(other);
+    return *this;
+  }
 
-	[[nodiscard]] reference operator[] (size_t i) { return storage[i]; }
-	[[nodiscard]] const_reference operator[] (size_t i) const { return storage[i]; }
+  Unique_array(const Unique_array&) = delete;
+  Unique_array& operator=(const Unique_array&) = delete;
+  void reset(const Unique_array&) = delete;
+
+  [[nodiscard]] pointer data() {
+    return storage.get();
+  }
+
+  [[nodiscard]] const_pointer data() const {
+    return storage.get();
+  }
+
+  [[nodiscard]] size_t size() const {
+    return len;
+  }
+
+  [[nodiscard]] bool empty() const {
+    return len == 0;
+  }
+
+  [[nodiscard]] iterator begin() {
+    return storage.get();
+  }
+
+  [[nodiscard]] iterator end() {
+    return begin() + len;
+  }
+
+  [[nodiscard]] const_iterator begin() const {
+    return storage.get();
+  }
+
+  [[nodiscard]] const_iterator end() const {
+    return storage.get() + len;
+  }
+
+  [[nodiscard]] reference operator[](size_t i) {
+    return storage[i];
+  }
+
+  [[nodiscard]] const_reference operator[](size_t i) const {
+    return storage[i];
+  }
 };
 
-template <typename T> auto make_array (size_t len)
-{
-	return Unique_array<T>(new T[len]{}, len);
+template<typename T>
+auto make_array(size_t len) {
+  return Unique_array<T>(new T[len]{}, len);
 }
 
-template <typename T> auto make_array_for_overwrite (size_t len)
-{
-	return Unique_array<T>(new T[len], len);
+template<typename T>
+auto make_array_for_overwrite(size_t len) {
+  return Unique_array<T>(new T[len], len);
 }

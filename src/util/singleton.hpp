@@ -21,16 +21,24 @@
 
 #include <cassert>
 
-template <typename Tag>
+template<typename Tag>
 struct Singleton_lock {
 #ifndef NDEBUG
-	static inline bool initialized = false;
-	Singleton_lock () { assert(!initialized); initialized = true; }
-	~Singleton_lock () { assert(initialized); initialized = false; }
+  static inline bool initialized = false;
+
+  Singleton_lock() {
+    assert(!initialized);
+    initialized = true;
+  }
+
+  ~Singleton_lock() {
+    assert(initialized);
+    initialized = false;
+  }
 #else
-	Singleton_lock () = default;
-	~Singleton_lock () = default;
+  Singleton_lock() = default;
+  ~Singleton_lock() = default;
 #endif
-	Singleton_lock (auto&&) = delete;
-	auto operator= (auto&&) = delete;
+  Singleton_lock(auto&&) = delete;
+  auto operator=(auto&&) = delete;
 };

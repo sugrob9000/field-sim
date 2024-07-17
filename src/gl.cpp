@@ -3,57 +3,66 @@
 
 namespace gl {
 
-static std::string_view error_code_name (GLenum error)
-{
-	switch (error) {
-	case GL_INVALID_ENUM: return "invalid enum";
-	case GL_INVALID_VALUE: return "invalid value";
-	case GL_INVALID_OPERATION: return "invalid operation";
-	case GL_STACK_OVERFLOW: return "stack overflow";
-	case GL_STACK_UNDERFLOW: return "stack underflow";
-	case GL_OUT_OF_MEMORY: return "out of memory";
-	default: return "unknown error code";
-	}
+static std::string_view error_code_name(GLenum error) {
+  switch (error) {
+  case GL_INVALID_ENUM:
+    return "invalid enum";
+  case GL_INVALID_VALUE:
+    return "invalid value";
+  case GL_INVALID_OPERATION:
+    return "invalid operation";
+  case GL_STACK_OVERFLOW:
+    return "stack overflow";
+  case GL_STACK_UNDERFLOW:
+    return "stack underflow";
+  case GL_OUT_OF_MEMORY:
+    return "out of memory";
+  default:
+    return "unknown error code";
+  }
 }
 
-static int poll_errors_warn_on_each ()
-{
-	int num_errors = 0;
-	for (GLenum error; (error = glGetError()) != GL_NO_ERROR; num_errors++)
-		WARNING("OpenGL error: {0} (0x{0:04x}) - {1}", error, error_code_name(error));
-	return num_errors;
+static int poll_errors_warn_on_each() {
+  int num_errors = 0;
+  for (GLenum error; (error = glGetError()) != GL_NO_ERROR; num_errors++) {
+    WARNING("OpenGL error: {0} (0x{0:04x}) - {1}", error, error_code_name(error));
+  }
+  return num_errors;
 }
 
-void poll_errors_and_warn (std::string_view tag)
-{
-	if (int num_errors = poll_errors_warn_on_each(); num_errors > 0)
-		WARNING("====== {} OpenGL error(s) reported during '{}' (see above)", num_errors, tag);
+void poll_errors_and_warn(std::string_view tag) {
+  if (int num_errors = poll_errors_warn_on_each(); num_errors > 0) {
+    WARNING("====== {} OpenGL error(s) reported during '{}' (see above)", num_errors, tag);
+  }
 }
 
-void poll_errors_and_die (std::string_view tag)
-{
-	if (int num_errors = poll_errors_warn_on_each(); num_errors > 0)
-		FATAL("{} OpenGL error(s) reported during '{}'", num_errors, tag);
+void poll_errors_and_die(std::string_view tag) {
+  if (int num_errors = poll_errors_warn_on_each(); num_errors > 0) {
+    FATAL("{} OpenGL error(s) reported during '{}'", num_errors, tag);
+  }
 }
 
-void debug_message_callback
-([[maybe_unused]] GLenum src, [[maybe_unused]] GLenum type,
- [[maybe_unused]] GLuint id, [[maybe_unused]] GLenum severe,
- [[maybe_unused]] GLsizei len, [[maybe_unused]] const char* msg,
- [[maybe_unused]] const void* param)
-{
-	switch (severe) {
-	case GL_DEBUG_SEVERITY_HIGH:
-		FATAL("OpenGL: {}", msg);
-		break;
-	case GL_DEBUG_SEVERITY_MEDIUM:
-		WARNING("OpenGL: {}", msg);
-		break;
-	case GL_DEBUG_SEVERITY_LOW:
-	case GL_DEBUG_SEVERITY_NOTIFICATION:
-		INFO("OpenGL: {}", msg);
-		break;
-	}
+void debug_message_callback(
+  [[maybe_unused]] GLenum src,
+  [[maybe_unused]] GLenum type,
+  [[maybe_unused]] GLuint id,
+  [[maybe_unused]] GLenum severe,
+  [[maybe_unused]] GLsizei len,
+  [[maybe_unused]] const char* msg,
+  [[maybe_unused]] const void* param
+) {
+  switch (severe) {
+  case GL_DEBUG_SEVERITY_HIGH:
+    FATAL("OpenGL: {}", msg);
+    break;
+  case GL_DEBUG_SEVERITY_MEDIUM:
+    WARNING("OpenGL: {}", msg);
+    break;
+  case GL_DEBUG_SEVERITY_LOW:
+  case GL_DEBUG_SEVERITY_NOTIFICATION:
+    INFO("OpenGL: {}", msg);
+    break;
+  }
 }
 
-} // namespace gl
+}  // namespace gl

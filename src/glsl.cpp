@@ -14,205 +14,207 @@ namespace gl {
 // - you cannot prevent recursive inclusion (in general, there is a limited depth)
 
 class File_source {
-	constexpr static const char source_dir[] = "shader/";
-	constexpr static bool line_directive_has_filename = true;
+  constexpr static const char source_dir[] = "shader/";
+  constexpr static bool line_directive_has_filename = true;
 
-	std::string src;
-	std::string original_path;
+  std::string src;
+  std::string original_path;
 
-	static std::optional<std::string_view> try_get_include_filename (std::string_view line) {
-		using std::find, std::find_if, std::find_if_not;
-		constexpr int (*is_space) (int) = std::isspace; // resolve overload
-		constexpr std::string_view keyword = "include";
+  static std::optional<std::string_view> try_get_include_filename(std::string_view line) {
+    using std::find, std::find_if, std::find_if_not;
+    constexpr int (*is_space)(int) = std::isspace;  // resolve overload
+    constexpr std::string_view keyword = "include";
 
-		auto end = line.end();
-		auto hash = find_if_not(line.begin(), end, is_space);
-		if (hash == end || *hash != '#')
-			return {};
+    auto end = line.end();
+    auto hash = find_if_not(line.begin(), end, is_space);
+    if (hash == end || *hash != '#') {
+      return {};
+    }
 
-		auto directive_begin = find_if_not(hash+1, end, is_space);
+    auto directive_begin = find_if_not(hash + 1, end, is_space);
 
-		// '#include x' <- there must be at least two characters after
-		// the keyword, the first of which also has to be whitespace
+    // '#include x' <- there must be at least two characters after
+    // the keyword, the first of which also has to be whitespace
 
-		if (static_cast<size_t>(end-directive_begin) < keyword.size()+2)
-			return {};
+    if (static_cast<size_t>(end - directive_begin) < keyword.size() + 2) {
+      return {};
+    }
 
-		auto directive_end = directive_begin + keyword.size();
-		if (!is_space(*directive_end)
-		|| std::string_view{directive_begin, directive_end} != keyword)
-			return {};
+    auto directive_end = directive_begin + keyword.size();
+    if (!is_space(*directive_end) || std::string_view{directive_begin, directive_end} != keyword) {
+      return {};
+    }
 
-		auto file_begin = find_if_not(directive_end+1, end, is_space);
-		if (file_begin == end)
-			return {};
+    auto file_begin = find_if_not(directive_end + 1, end, is_space);
+    if (file_begin == end) {
+      return {};
+    }
 
-		if (*file_begin == '\"') {
-			file_begin++;
-			auto closing_quote = find(file_begin, end, '\"');
-			return std::string_view{ file_begin, closing_quote };
-		} else {
-			auto end_of_word = find_if(file_begin+1, end, is_space);
-			return std::string_view{ file_begin, end_of_word };
-		}
-	}
+    if (*file_begin == '\"') {
+      file_begin++;
+      auto closing_quote = find(file_begin, end, '\"');
+      return std::string_view{file_begin, closing_quote};
+    } else {
+      auto end_of_word = find_if(file_begin + 1, end, is_space);
+      return std::string_view{file_begin, end_of_word};
+    }
+  }
 
-	void append_line_directive (unsigned long line_nr, std::string_view name) {
-		auto out = std::back_inserter(src);
-		if constexpr (line_directive_has_filename)
-			fmt::format_to(out, FMT_STRING("#line {} \"{}{}\"\n"), line_nr, source_dir, name);
-		else
-			fmt::format_to(out, FMT_STRING("#line {}\n"), line_nr);
-	}
+  void append_line_directive(unsigned long line_nr, std::string_view name) {
+    auto out = std::back_inserter(src);
+    if constexpr (line_directive_has_filename) {
+      fmt::format_to(out, FMT_STRING("#line {} \"{}{}\"\n"), line_nr, source_dir, name);
+    } else {
+      fmt::format_to(out, FMT_STRING("#line {}\n"), line_nr);
+    }
+  }
 
-	void append_from_file (std::string_view path, int recurse) {
-		if (constexpr int limit = 20; recurse > limit) {
-			FATAL("Shader '{}{}' has a recursive #include chain of depth > {}",
-					source_dir, original_path, limit);
-		}
+  void append_from_file(std::string_view path, int recurse) {
+    if (constexpr int limit = 20; recurse > limit) {
+      FATAL("Shader '{}{}' has a recursive #include chain of depth > {}", source_dir, original_path, limit);
+    }
 
-		std::ifstream stream(std::string{source_dir} + std::string{path});
-		if (!stream.good()) {
-			if (recurse == 0) {
-				FATAL("Shader '{}{}': cannot open file", source_dir, path);
-			} else {
-				FATAL("Shader '{0}{1}' (included from '{0}{2}'): cannot open file",
-						source_dir, path, original_path);
-			}
-		}
+    std::ifstream stream(std::string{source_dir} + std::string{path});
+    if (!stream.good()) {
+      if (recurse == 0) {
+        FATAL("Shader '{}{}': cannot open file", source_dir, path);
+      } else {
+        FATAL("Shader '{0}{1}' (included from '{0}{2}'): cannot open file", source_dir, path, original_path);
+      }
+    }
 
-		append_line_directive(0, path);
+    append_line_directive(0, path);
 
-		unsigned long line_nr = 1;
-		std::string line;
-		for (; std::getline(stream, line); line_nr++) {
-			if (auto include_target = try_get_include_filename(line)) {
-				append_line_directive(0, *include_target);
-				append_from_file(*include_target, recurse+1);
-				append_line_directive(line_nr+1, path);
-			} else {
-				src += line;
-				src += '\n';
-			}
-		}
-	}
+    unsigned long line_nr = 1;
+    std::string line;
+    for (; std::getline(stream, line); line_nr++) {
+      if (auto include_target = try_get_include_filename(line)) {
+        append_line_directive(0, *include_target);
+        append_from_file(*include_target, recurse + 1);
+        append_line_directive(line_nr + 1, path);
+      } else {
+        src += line;
+        src += '\n';
+      }
+    }
+  }
 
 public:
-	explicit File_source (std::string_view path):
-		original_path{path}
-	{
-		append_from_file(path, 0);
-	}
+  explicit File_source(std::string_view path) : original_path{path} {
+    append_from_file(path, 0);
+  }
 
-	operator std::string () && { return std::move(src); }
+  operator std::string() && {
+    return std::move(src);
+  }
 };
 
 // ================================== Loading shaders ==================================
 
 constexpr static const char shader_prologue[] =
-"#version 460 core\n"
-"#extension GL_ARB_explicit_uniform_location: require\n"
-"#extension GL_ARB_shading_language_include: require\n";
+  "#version 460 core\n"
+  "#extension GL_ARB_explicit_uniform_location: require\n"
+  "#extension GL_ARB_shading_language_include: require\n";
 
 // `src` is std::string because we need zero-termination for glShaderSource,
 // so would have made a std::string anyway
-static Shader compile_shader (Shader::Type type, const std::string& src, std::string_view name)
-{
-	GLuint id = glCreateShader(static_cast<GLenum>(type));
-	if (id == 0)
-		FATAL("Shader {}: failed to create shader object", name);
+static Shader compile_shader(Shader::Type type, const std::string& src, std::string_view name) {
+  GLuint id = glCreateShader(static_cast<GLenum>(type));
+  if (id == 0) {
+    FATAL("Shader {}: failed to create shader object", name);
+  }
 
-	const char* lines[] = { shader_prologue, src.c_str() };
-	glShaderSource(id, std::size(lines), lines, nullptr);
-	glCompileShader(id);
+  const char* lines[] = {shader_prologue, src.c_str()};
+  glShaderSource(id, std::size(lines), lines, nullptr);
+  glCompileShader(id);
 
-	int compile_success = 0;
-	glGetShaderiv(id, GL_COMPILE_STATUS, &compile_success);
-	if (!compile_success) {
-		int log_length = 0;
-		glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
-		auto log = std::make_unique_for_overwrite<char[]>(log_length+1);
-		glGetShaderInfoLog(id, log_length, &log_length, log.get());
-		FATAL("Shader {} failed to compile. Log:\n{}", name, log.get());
-	}
+  int compile_success = 0;
+  glGetShaderiv(id, GL_COMPILE_STATUS, &compile_success);
+  if (!compile_success) {
+    int log_length = 0;
+    glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
+    auto log = std::make_unique_for_overwrite<char[]>(log_length + 1);
+    glGetShaderInfoLog(id, log_length, &log_length, log.get());
+    FATAL("Shader {} failed to compile. Log:\n{}", name, log.get());
+  }
 
-	return Shader(id);
+  return Shader(id);
 }
 
-Shader Shader::from_file (Type type, std::string_view file_path)
-{
-	return compile_shader(type, File_source{file_path}, file_path);
+Shader Shader::from_file(Type type, std::string_view file_path) {
+  return compile_shader(type, File_source{file_path}, file_path);
 }
 
-Shader Shader::from_source (Type type, std::string_view source)
-{
-	return compile_shader(type, std::string{source}, "<source string>");
+Shader Shader::from_source(Type type, std::string_view source) {
+  return compile_shader(type, std::string{source}, "<source string>");
 }
 
 // ================================== Shader programs ==================================
 
-static GLuint link_program_low (std::span<const Shader> shaders)
-{
-	if (shaders.empty())
-		FATAL("Tried to link a program without any shaders");
+static GLuint link_program_low(std::span<const Shader> shaders) {
+  if (shaders.empty()) {
+    FATAL("Tried to link a program without any shaders");
+  }
 
-	GLuint id = glCreateProgram();
-	if (id == 0)
-		FATAL("Failed to create shader program");
+  GLuint id = glCreateProgram();
+  if (id == 0) {
+    FATAL("Failed to create shader program");
+  }
 
-	for (const Shader& s: shaders) glAttachShader(id, s.get());
-	glLinkProgram(id);
-	for (const Shader& s: shaders) glDetachShader(id, s.get());
+  for (const Shader& s: shaders) {
+    glAttachShader(id, s.get());
+  }
+  glLinkProgram(id);
+  for (const Shader& s: shaders) {
+    glDetachShader(id, s.get());
+  }
 
-	int link_success = 0;
-	glGetProgramiv(id, GL_LINK_STATUS, &link_success);
-	if (!link_success) {
-		int log_length = 0;
-		glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
-		auto log = std::make_unique_for_overwrite<char[]>(log_length+1);
-		glGetProgramInfoLog(id, log_length, &log_length, log.get());
-		FATAL("Program with id {} failed to link. Log:\n{}", id, log.get());
-	}
+  int link_success = 0;
+  glGetProgramiv(id, GL_LINK_STATUS, &link_success);
+  if (!link_success) {
+    int log_length = 0;
+    glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
+    auto log = std::make_unique_for_overwrite<char[]>(log_length + 1);
+    glGetProgramInfoLog(id, log_length, &log_length, log.get());
+    FATAL("Program with id {} failed to link. Log:\n{}", id, log.get());
+  }
 
-	return id;
+  return id;
 }
 
-Program::Program (std::span<const Shader> shaders)
-	: Unique_handle(link_program_low(shaders)) { }
+Program::Program(std::span<const Shader> shaders) : Unique_handle(link_program_low(shaders)) {}
 
-Program Program::from_frag_vert (std::string_view frag_path, std::string_view vert_path)
-{
-	Shader shaders[] = {
-		Shader::from_file(Shader::Type::fragment, frag_path),
-		Shader::from_file(Shader::Type::vertex, vert_path),
-	};
-	return Program(shaders);
+Program Program::from_frag_vert(std::string_view frag_path, std::string_view vert_path) {
+  Shader shaders[] = {
+    Shader::from_file(Shader::Type::fragment, frag_path),
+    Shader::from_file(Shader::Type::vertex, vert_path),
+  };
+  return Program(shaders);
 }
 
-Program Program::from_compute (std::string_view compute_path)
-{
-	Shader shader[] = { Shader::from_file(Shader::Type::compute, compute_path) };
-	return Program(shader);
+Program Program::from_compute(std::string_view compute_path) {
+  Shader shader[] = {Shader::from_file(Shader::Type::compute, compute_path)};
+  return Program(shader);
 }
 
-std::string Program::get_printable_internals () const
-{
-	int expected_length = 0;
-	glGetProgramiv(this->get(), GL_PROGRAM_BINARY_LENGTH, &expected_length);
+std::string Program::get_printable_internals() const {
+  int expected_length = 0;
+  glGetProgramiv(this->get(), GL_PROGRAM_BINARY_LENGTH, &expected_length);
 
-	const auto text = std::make_unique_for_overwrite<char[]>(expected_length);
+  const auto text = std::make_unique_for_overwrite<char[]>(expected_length);
 
-	GLsizei real_length;
-	GLenum bin_format;
-	glGetProgramBinary(this->get(), expected_length, &real_length, &bin_format, text.get());
+  GLsizei real_length;
+  GLenum bin_format;
+  glGetProgramBinary(this->get(), expected_length, &real_length, &bin_format, text.get());
 
-	// Filter out unprintable characters and hope the result is useful, godspeed
-	std::string result;
-	for (char c: std::string_view{ text.get(), text.get()+real_length }) {
-		if (c == '\t' || c == '\n' || (c >= 0x20 && c <= 0x7E))
-			result.push_back(c);
-	}
-	return result;
+  // Filter out unprintable characters and hope the result is useful, godspeed
+  std::string result;
+  for (char c: std::string_view{text.get(), text.get() + real_length}) {
+    if (c == '\t' || c == '\n' || (c >= 0x20 && c <= 0x7E)) {
+      result.push_back(c);
+    }
+  }
+  return result;
 }
 
-} // namespace gl
+}  // namespace gl

@@ -9,326 +9,373 @@ using Resolution = glm::vec<2, unsigned>;
 namespace gfx {
 
 struct Field_viz_config {
-	Resolution particle_grid_size;
-	unsigned particle_lifetime;
+  Resolution particle_grid_size;
+  unsigned particle_lifetime;
 };
 
 // TODO: use fieldviz as a proper class and not a global resource
-static void fieldviz_init (const Field_viz_config&);
-static void fieldviz_deinit ();
-static void fieldviz_ensure_least_framebuffer_size (Resolution);
+static void fieldviz_init(const Field_viz_config&);
+static void fieldviz_deinit();
+static void fieldviz_ensure_least_framebuffer_size(Resolution);
 
 // ========================= Rendering context setup & handling =========================
 
 using Unique_SDL_Window = Unique_handle<SDL_Window*, Simple_deleter<SDL_DestroyWindow>>;
 using Unique_SDL_GLContext = Unique_handle<SDL_GLContext, Simple_deleter<SDL_GL_DeleteContext>>;
+
 struct SDL_init_lock: Singleton_lock<SDL_init_lock> {
-	SDL_init_lock (const Config& cfg) {
-		if (SDL_Init(SDL_INIT_VIDEO) < 0)
-			FATAL("Failed to initialize SDL: {}", SDL_GetError());
+  SDL_init_lock(const Config& cfg) {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+      FATAL("Failed to initialize SDL: {}", SDL_GetError());
+    }
 
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-		if (cfg.msaa_samples)
-			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, cfg.msaa_samples);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    if (cfg.msaa_samples) {
+      SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, cfg.msaa_samples);
+    }
 
-		SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
-	}
-	~SDL_init_lock () { SDL_Quit(); }
+    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
+  }
+
+  ~SDL_init_lock() {
+    SDL_Quit();
+  }
 };
 
 struct Context {
-	Resolution resolution;
-	SDL_init_lock sdl_init [[no_unique_address]];
-	Unique_SDL_Window window;
-	Unique_SDL_GLContext glcontext;
+  Resolution resolution;
+  SDL_init_lock sdl_init [[no_unique_address]];
+  Unique_SDL_Window window;
+  Unique_SDL_GLContext glcontext;
 
-	std::string_view renderer_name;
-	std::string_view vendor_name;
-	std::string_view driver_name;
+  std::string_view renderer_name;
+  std::string_view vendor_name;
+  std::string_view driver_name;
 
-	explicit Context (const Config& cfg):
-		resolution(cfg.screen_res_x, cfg.screen_res_y),
-		sdl_init(cfg)
-	{
-		constexpr Resolution min_res = { 100, 100 };
-		if (resolution.x < min_res.x || resolution.y < min_res.y)
-			FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
-		window.reset(SDL_CreateWindow(nullptr,
-				SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-				resolution.x, resolution.y,
-				SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE));
-		if (!window)
-			FATAL("Failed to create SDL window: {}", SDL_GetError());
+  explicit Context(const Config& cfg) : resolution(cfg.screen_res_x, cfg.screen_res_y), sdl_init(cfg) {
+    constexpr Resolution min_res = {100, 100};
+    if (resolution.x < min_res.x || resolution.y < min_res.y) {
+      FATAL("Resolution {} is too small, minimum is {}", resolution, min_res);
+    }
+    window.reset(SDL_CreateWindow(
+      nullptr,
+      SDL_WINDOWPOS_UNDEFINED,
+      SDL_WINDOWPOS_UNDEFINED,
+      resolution.x,
+      resolution.y,
+      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+    ));
+    if (!window) {
+      FATAL("Failed to create SDL window: {}", SDL_GetError());
+    }
 
-		glcontext.reset(SDL_GL_CreateContext(window.get()));
-		if (!glcontext)
-			FATAL("Failed to create GL context: {}", SDL_GetError());
+    glcontext.reset(SDL_GL_CreateContext(window.get()));
+    if (!glcontext) {
+      FATAL("Failed to create GL context: {}", SDL_GetError());
+    }
 
-		glewExperimental = true;
-		if (glewInit() != GLEW_OK)
-			FATAL("Failed to initialize GLEW");
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK) {
+      FATAL("Failed to initialize GLEW");
+    }
 
-		SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetSwapInterval(1);
 
-		if (cfg.msaa_samples)
-			glEnable(GL_MULTISAMPLE);
+    if (cfg.msaa_samples) {
+      glEnable(GL_MULTISAMPLE);
+    }
 
-		glEnable(GL_BLEND);
+    glEnable(GL_BLEND);
 
-		SDL_SetWindowTitle(window.get(), "Vector fields");
+    SDL_SetWindowTitle(window.get(), "Vector fields");
 
-		if (cfg.debug) {
-			INFO("Enabling verbose OpenGL debugging");
-			glEnable(GL_DEBUG_OUTPUT);
-			glDebugMessageCallback(gl::debug_message_callback, nullptr);
-		}
+    if (cfg.debug) {
+      INFO("Enabling verbose OpenGL debugging");
+      glEnable(GL_DEBUG_OUTPUT);
+      glDebugMessageCallback(gl::debug_message_callback, nullptr);
+    }
 
-		Field_viz_config field_viz_cfg = {
-			.particle_grid_size { cfg.particles_x, cfg.particles_y },
-			.particle_lifetime = cfg.particle_lifetime
-		};
-		const unsigned spacing = cfg.particle_spacing ? cfg.particle_spacing : 2;
-		for (int i: { 0, 1 }) {
-			if (field_viz_cfg.particle_grid_size[i] == 0)
-				field_viz_cfg.particle_grid_size[i] = resolution[i] / spacing;
-		}
+    Field_viz_config field_viz_cfg = {
+      .particle_grid_size{cfg.particles_x, cfg.particles_y},
+      .particle_lifetime = cfg.particle_lifetime
+    };
+    const unsigned spacing = cfg.particle_spacing ? cfg.particle_spacing : 2;
+    for (int i: {0, 1}) {
+      if (field_viz_cfg.particle_grid_size[i] == 0) {
+        field_viz_cfg.particle_grid_size[i] = resolution[i] / spacing;
+      }
+    }
 
-		fieldviz_init(field_viz_cfg);
-		fieldviz_ensure_least_framebuffer_size(resolution);
+    fieldviz_init(field_viz_cfg);
+    fieldviz_ensure_least_framebuffer_size(resolution);
 
-		renderer_name = gl::get_string(GL_RENDERER);
-		vendor_name = gl::get_string(GL_VENDOR);
-		driver_name = gl::get_string(GL_VERSION);
+    renderer_name = gl::get_string(GL_RENDERER);
+    vendor_name = gl::get_string(GL_VENDOR);
+    driver_name = gl::get_string(GL_VERSION);
 
-		INFO("Renderer is '{}' by '{}', driver/version '{}'",
-				renderer_name, vendor_name, driver_name);
-	}
+    INFO("Renderer is '{}' by '{}', driver/version '{}'", renderer_name, vendor_name, driver_name);
+  }
 
-	~Context () { fieldviz_deinit(); }
+  ~Context() {
+    fieldviz_deinit();
+  }
 
-	void update_resolution (Resolution res) {
-		this->resolution = res;
-		fieldviz_ensure_least_framebuffer_size(res);
-	}
+  void update_resolution(Resolution res) {
+    this->resolution = res;
+    fieldviz_ensure_least_framebuffer_size(res);
+  }
 };
 
 // ================================ Field visualization ================================
 
 struct Field_viz {
-	Resolution grid_size;
-	unsigned get_total_particles () const { return grid_size.x * grid_size.y; }
+  Resolution grid_size;
 
-	unsigned current_tick = 0;
+  unsigned get_total_particles() const {
+    return grid_size.x * grid_size.y;
+  }
 
-	// Particles are stored in a buffer: 2x vec2 per particle, "head" and "tail". This buffer
-	// is used both to draw the particle and to calculate its new position in a compute pass.
-	// Particle coordinates are such that neighbors in the grid are 1 unit apart
-	// TODO: this means that if the grid is made smaller, individual units are larger on the
-	// screen, greatly affecting the way the simulation looks
-	gl::Buffer particles_buffer;
-	gl::Vertex_array lines_vao;
+  unsigned current_tick = 0;
 
-	gl::Program draw_particles_program;
+  // Particles are stored in a buffer: 2x vec2 per particle, "head" and "tail". This buffer
+  // is used both to draw the particle and to calculate its new position in a compute pass.
+  // Particle coordinates are such that neighbors in the grid are 1 unit apart
+  // TODO: this means that if the grid is made smaller, individual units are larger on the
+  // screen, greatly affecting the way the simulation looks
+  gl::Buffer particles_buffer;
+  gl::Vertex_array lines_vao;
 
-	// Compute shader
-	gl::Program update_particles_program;
-	// Matches the size specified in the shader
-	constexpr static Resolution workgroup_size = { 32, 32 };
-	Resolution get_dispatch_size () const { return grid_size / workgroup_size; }
+  gl::Program draw_particles_program;
 
-	// For a cooler effect, we paint on top of what was drawn on the previous frame.
-	// For the contents of the framebuffer to be well-defined at frame start, we have
-	// to own the framebuffer, otherwise they are undefined
-	// (and do become garbage in practice, in the absence of a compositor)
-	Resolution accum_fbo_size = { 0, 0 };
-	gl::Framebuffer accum_fbo;
-	gl::Renderbuffer accum_rbo;
+  // Compute shader
+  gl::Program update_particles_program;
+  // Matches the size specified in the shader
+  constexpr static Resolution workgroup_size = {32, 32};
 
-	unsigned particle_lifetime = 200;
+  Resolution get_dispatch_size() const {
+    return grid_size / workgroup_size;
+  }
 
-	// Things that act upon the field are represented in a uniform buffer,
-	// the format of which is one `GPU_actors` struct
-	// There are vortices (clockwise with force<0) and pushers (pullers when force<0)
-	struct GPU_actors {
-		static constexpr int max_vortices = 16;
-		static constexpr int max_pushers = 16;
-		struct alignas(16) Vortex { vec2 position; float force; };
-		struct alignas(16) Pusher { vec2 position; float force; };
-		Vortex vortices[max_vortices];
-		Pusher pushers[max_pushers];
-	};
-	gl::Buffer actors_buffer;
-	GPU_actors* actors_buffer_mapped; // mapped write-only
-	unsigned num_vortices = 0;
-	unsigned num_pushers = 0;
+  // For a cooler effect, we paint on top of what was drawn on the previous frame.
+  // For the contents of the framebuffer to be well-defined at frame start, we have
+  // to own the framebuffer, otherwise they are undefined
+  // (and do become garbage in practice, in the absence of a compositor)
+  Resolution accum_fbo_size = {0, 0};
+  gl::Framebuffer accum_fbo;
+  gl::Renderbuffer accum_rbo;
 
-	explicit Field_viz (const Field_viz_config& cfg)
-		: grid_size { cfg.particle_grid_size }, particle_lifetime { cfg.particle_lifetime }
-	{
-		// Round the grid size down to workgroup size. TODO handle this more gracefully?
-		grid_size /= workgroup_size;
-		grid_size *= workgroup_size;
+  unsigned particle_lifetime = 200;
 
-		if (unsigned num_particles = get_total_particles())
-			INFO("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, num_particles);
-		else
-			FATAL("The number of particles got rounded down to zero. Try larger grid");
+  // Things that act upon the field are represented in a uniform buffer,
+  // the format of which is one `GPU_actors` struct
+  // There are vortices (clockwise with force<0) and pushers (pullers when force<0)
+  struct GPU_actors {
+    static constexpr int max_vortices = 16;
+    static constexpr int max_pushers = 16;
 
-		{ // VBO
-			particles_buffer = gl::Buffer::create();
-			glNamedBufferStorage(particles_buffer.get(),
-					2*sizeof(vec2)*get_total_particles(), nullptr, 0);
-		}
+    struct alignas(16) Vortex {
+      vec2 position;
+      float force;
+    };
 
-		{ // VAO & vertex format
-			lines_vao = gl::Vertex_array::create();
-			glBindVertexArray(lines_vao.get());
+    struct alignas(16) Pusher {
+      vec2 position;
+      float force;
+    };
 
-			glEnableVertexAttribArray(0);
-			glVertexAttribBinding(0, 0);
-			glVertexAttribFormat(0, 2, GL_FLOAT, false, 0);
+    Vortex vortices[max_vortices];
+    Pusher pushers[max_pushers];
+  };
 
-			glBindVertexBuffer(0, particles_buffer.get(), 0, sizeof(vec2));
-		}
+  gl::Buffer actors_buffer;
+  GPU_actors* actors_buffer_mapped;  // mapped write-only
+  unsigned num_vortices = 0;
+  unsigned num_pushers = 0;
 
-		{ // SSBOs and UBOs
-			actors_buffer = gl::Buffer::create();
-			glNamedBufferStorage(actors_buffer.get(), sizeof(GPU_actors), nullptr,
-					GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-			actors_buffer_mapped = gl::map_buffer_range_as<GPU_actors>
-				(actors_buffer, 0, sizeof(GPU_actors),
-				 GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT);
+  explicit Field_viz(const Field_viz_config& cfg) :
+    grid_size{cfg.particle_grid_size},
+    particle_lifetime{cfg.particle_lifetime} {
+    // Round the grid size down to workgroup size. TODO handle this more gracefully?
+    grid_size /= workgroup_size;
+    grid_size *= workgroup_size;
 
-			gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
-			gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
-		}
+    if (unsigned num_particles = get_total_particles()) {
+      INFO("Simulating {}x{} = {} particles", grid_size.x, grid_size.y, num_particles);
+    } else {
+      FATAL("The number of particles got rounded down to zero. Try larger grid");
+    }
 
-		draw_particles_program = gl::Program::from_frag_vert("lines.frag", "lines.vert");
-		update_particles_program = gl::Program::from_compute("particle.comp");
+    {  // VBO
+      particles_buffer = gl::Buffer::create();
+      glNamedBufferStorage(particles_buffer.get(), 2 * sizeof(vec2) * get_total_particles(), nullptr, 0);
+    }
 
-		gl::poll_errors_and_die("field viz init");
-	}
+    {  // VAO & vertex format
+      lines_vao = gl::Vertex_array::create();
+      glBindVertexArray(lines_vao.get());
 
-	~Field_viz () {
-		gl::unmap_buffer(actors_buffer);
-	}
+      glEnableVertexAttribArray(0);
+      glVertexAttribBinding(0, 0);
+      glVertexAttribFormat(0, 2, GL_FLOAT, false, 0);
 
-	void advance_simulation () {
-		{ // Update mapped buffer data
-			auto& m = *actors_buffer_mapped;
-			float w = grid_size.x;
-			float h = grid_size.y;
-			float sec = current_tick / 60.0f;
+      glBindVertexBuffer(0, particles_buffer.get(), 0, sizeof(vec2));
+    }
 
-			num_vortices = 0;
-			num_pushers = 0;
-			const auto add_vortex = [&] (float x, float y, float f) {
-				m.vortices[num_vortices++] = { .position = { w*x, h*y }, .force = f };
-			};
-			const auto add_pusher = [&] (float x, float y, float f) {
-				m.pushers[num_pushers++] = { .position = { w*x, h*y }, .force = f };
-			};
+    {  // SSBOs and UBOs
+      actors_buffer = gl::Buffer::create();
+      glNamedBufferStorage(
+        actors_buffer.get(),
+        sizeof(GPU_actors),
+        nullptr,
+        GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT
+      );
+      actors_buffer_mapped = gl::map_buffer_range_as<GPU_actors>(
+        actors_buffer,
+        0,
+        sizeof(GPU_actors),
+        GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_FLUSH_EXPLICIT_BIT
+      );
 
-			add_vortex(0.5, 0.5, 200);
-			add_vortex(0.2, 0.1, 70*sin(sec * 0.5));
-			add_vortex(0.3, 0.3, 70*cos(sec * 0.5));
-			add_pusher(0.3, 0.9, 200*sin(sec));
-			add_pusher(0.7, 0.5, 75 + 75*sin(sec * 1.5f));
-		}
+      gl::bind_ubo(gl::UBO_binding_point::fieldviz_actors, actors_buffer);
+      gl::bind_ssbo(gl::SSBO_binding_point::fieldviz_particles, particles_buffer);
+    }
 
-		glUseProgram(update_particles_program.get());
+    draw_particles_program = gl::Program::from_frag_vert("lines.frag", "lines.vert");
+    update_particles_program = gl::Program::from_compute("particle.comp");
 
-		{ // Upload uniform data
-			constexpr GLint unif_loc_tick = 0;
-			constexpr GLint unif_loc_particle_lifetime = 1;
-			constexpr GLint unif_loc_num_vortices = 10;
-			constexpr GLint unif_loc_num_pushers = 11;
-			glUniform1ui(unif_loc_tick, current_tick);
-			glUniform1ui(unif_loc_particle_lifetime, particle_lifetime);
-			glUniform1ui(unif_loc_num_vortices, num_vortices);
-			glUniform1ui(unif_loc_num_pushers, num_pushers);
-		}
+    gl::poll_errors_and_die("field viz init");
+  }
 
-		gl::flush_mapped_buffer_range(actors_buffer,
-				offsetof(GPU_actors, vortices), sizeof(GPU_actors::Vortex) * num_vortices);
-		gl::flush_mapped_buffer_range(actors_buffer,
-				offsetof(GPU_actors, pushers), sizeof(GPU_actors::Pusher) * num_pushers);
+  ~Field_viz() {
+    gl::unmap_buffer(actors_buffer);
+  }
 
-		Resolution dispatch_size = get_dispatch_size();
-		glDispatchCompute(dispatch_size.x, dispatch_size.y, 1);
+  void advance_simulation() {
+    {  // Update mapped buffer data
+      auto& m = *actors_buffer_mapped;
+      float w = grid_size.x;
+      float h = grid_size.y;
+      float sec = current_tick / 60.0f;
 
-		current_tick++;
-	}
+      num_vortices = 0;
+      num_pushers = 0;
+      const auto add_vortex = [&](float x, float y, float f) {
+        m.vortices[num_vortices++] = {.position = {w * x, h * y}, .force = f};
+      };
+      const auto add_pusher = [&](float x, float y, float f) {
+        m.pushers[num_pushers++] = {.position = {w * x, h * y}, .force = f};
+      };
 
-	void ensure_least_framebuffer_size (Resolution required_size) {
-		if (accum_fbo_size.x >= required_size.x && accum_fbo_size.y >= required_size.y)
-			return;
+      add_vortex(0.5, 0.5, 200);
+      add_vortex(0.2, 0.1, 70 * sin(sec * 0.5));
+      add_vortex(0.3, 0.3, 70 * cos(sec * 0.5));
+      add_pusher(0.3, 0.9, 200 * sin(sec));
+      add_pusher(0.7, 0.5, 75 + 75 * sin(sec * 1.5f));
+    }
 
-		constexpr Resolution max_size = { 3840, 2160 };
-		if (required_size.x > max_size.x || required_size.y > max_size.y) {
-			FATAL("Tried to resize framebuffer to at least {}, which is too large (max {})",
-			      required_size, max_size);
-		}
+    glUseProgram(update_particles_program.get());
 
-		// Heuristic for new framebuffer size: at first request an exact amount, after that
-		// use whichever power of 2 is large enough (but still not too large)
-		for (int i = 0; i < 2; i++) {
-			if (accum_fbo_size[i] == 0) {
-				accum_fbo_size[i] = required_size[i];
-			} else {
-				unsigned next_po2 = 1u << std::bit_width(required_size[i]);
-				accum_fbo_size[i] = glm::clamp(accum_fbo_size[i], next_po2, max_size[i]);
-			}
-		}
+    {  // Upload uniform data
+      constexpr GLint unif_loc_tick = 0;
+      constexpr GLint unif_loc_particle_lifetime = 1;
+      constexpr GLint unif_loc_num_vortices = 10;
+      constexpr GLint unif_loc_num_pushers = 11;
+      glUniform1ui(unif_loc_tick, current_tick);
+      glUniform1ui(unif_loc_particle_lifetime, particle_lifetime);
+      glUniform1ui(unif_loc_num_vortices, num_vortices);
+      glUniform1ui(unif_loc_num_pushers, num_pushers);
+    }
 
-		accum_fbo = gl::Framebuffer::create();
-		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
+    gl::flush_mapped_buffer_range(
+      actors_buffer,
+      offsetof(GPU_actors, vortices),
+      sizeof(GPU_actors::Vortex) * num_vortices
+    );
+    gl::flush_mapped_buffer_range(
+      actors_buffer,
+      offsetof(GPU_actors, pushers),
+      sizeof(GPU_actors::Pusher) * num_pushers
+    );
 
-		accum_rbo = gl::Renderbuffer::create();
-		glBindRenderbuffer(GL_RENDERBUFFER, accum_rbo.get());
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, accum_fbo_size.x, accum_fbo_size.y);
+    Resolution dispatch_size = get_dispatch_size();
+    glDispatchCompute(dispatch_size.x, dispatch_size.y, 1);
 
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-				GL_RENDERBUFFER, accum_rbo.get());
+    current_tick++;
+  }
 
-		if (GLenum s = glCheckFramebufferStatus(GL_FRAMEBUFFER); s != GL_FRAMEBUFFER_COMPLETE)
-			FATAL("Framebuffer {0} is incomplete: status {1} ({1:x})", accum_fbo.get(), s);
-	}
+  void ensure_least_framebuffer_size(Resolution required_size) {
+    if (accum_fbo_size.x >= required_size.x && accum_fbo_size.y >= required_size.y) {
+      return;
+    }
 
-	void draw (Resolution res, bool should_clear) const {
-		glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
-		glViewport(0, 0, res.x, res.y);
+    constexpr Resolution max_size = {3840, 2160};
+    if (required_size.x > max_size.x || required_size.y > max_size.y) {
+      FATAL(
+        "Tried to resize framebuffer to at least {}, which is too large (max {})",
+        required_size,
+        max_size
+      );
+    }
 
-		if (should_clear) {
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
-		}
+    // Heuristic for new framebuffer size: at first request an exact amount, after that
+    // use whichever power of 2 is large enough (but still not too large)
+    for (int i = 0; i < 2; i++) {
+      if (accum_fbo_size[i] == 0) {
+        accum_fbo_size[i] = required_size[i];
+      } else {
+        unsigned next_po2 = 1u << std::bit_width(required_size[i]);
+        accum_fbo_size[i] = glm::clamp(accum_fbo_size[i], next_po2, max_size[i]);
+      }
+    }
 
-		glUseProgram(draw_particles_program.get());
+    accum_fbo = gl::Framebuffer::create();
+    glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
 
-		{ // Upload uniforms
-			constexpr GLint unif_loc_workgroup_size = 0;
-			constexpr GLint unif_loc_workgroup_num = 2;
-			constexpr GLint unif_loc_scale = 4;
+    accum_rbo = gl::Renderbuffer::create();
+    glBindRenderbuffer(GL_RENDERBUFFER, accum_rbo.get());
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, accum_fbo_size.x, accum_fbo_size.y);
 
-			Resolution dispatch_size = get_dispatch_size();
-			glUniform2ui(unif_loc_workgroup_size, workgroup_size.x, workgroup_size.y);
-			glUniform2ui(unif_loc_workgroup_num, dispatch_size.x, dispatch_size.y);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, accum_rbo.get());
 
-			// If viewport is too wide, cut off left & right; if too tall, cut off top & bottom
-			float aspect = (float) grid_size.x * res.y / (grid_size.y * res.x);
-			glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f/aspect));
-		}
+    if (GLenum s = glCheckFramebufferStatus(GL_FRAMEBUFFER); s != GL_FRAMEBUFFER_COMPLETE) {
+      FATAL("Framebuffer {0} is incomplete: status {1} ({1:x})", accum_fbo.get(), s);
+    }
+  }
 
-		glBindVertexArray(lines_vao.get());
-		glDrawArrays(GL_LINES, 0, 2 * get_total_particles());
+  void draw(Resolution res, bool should_clear) const {
+    glBindFramebuffer(GL_FRAMEBUFFER, accum_fbo.get());
+    glViewport(0, 0, res.x, res.y);
 
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, accum_fbo.get());
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-		glBlitFramebuffer(0, 0, res.x, res.y, 0, 0, res.x, res.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-	}
+    if (should_clear) {
+      glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+    }
+
+    glUseProgram(draw_particles_program.get());
+
+    {  // Upload uniforms
+      constexpr GLint unif_loc_workgroup_size = 0;
+      constexpr GLint unif_loc_workgroup_num = 2;
+      constexpr GLint unif_loc_scale = 4;
+
+      Resolution dispatch_size = get_dispatch_size();
+      glUniform2ui(unif_loc_workgroup_size, workgroup_size.x, workgroup_size.y);
+      glUniform2ui(unif_loc_workgroup_num, dispatch_size.x, dispatch_size.y);
+
+      // If viewport is too wide, cut off left & right; if too tall, cut off top & bottom
+      float aspect = (float) grid_size.x * res.y / (grid_size.y * res.x);
+      glUniform2f(unif_loc_scale, std::max(1.0f, aspect), std::max(1.0f, 1.0f / aspect));
+    }
+
+    glBindVertexArray(lines_vao.get());
+    glDrawArrays(GL_LINES, 0, 2 * get_total_particles());
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, accum_fbo.get());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, res.x, res.y, 0, 0, res.x, res.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+  }
 };
 
 // ================================= Shallow public API =================================
@@ -336,39 +383,45 @@ struct Field_viz {
 static Deferred_init_unchecked<Context> global_render_context;
 static Deferred_init_unchecked<Field_viz> global_fieldviz;
 
-Init_lock::Init_lock (const Config& cfg) { global_render_context.init(cfg); }
-Init_lock::~Init_lock () { global_render_context.deinit(); }
-
-void handle_sdl_event (const SDL_Event& event)
-{
-	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
-		global_render_context->update_resolution({ event.window.data1, event.window.data2 });
+Init_lock::Init_lock(const Config& cfg) {
+  global_render_context.init(cfg);
 }
 
-void present_frame ()
-{
-	gl::poll_errors_and_warn("latest frame");
-	SDL_GL_SwapWindow(global_render_context->window.get());
+Init_lock::~Init_lock() {
+  global_render_context.deinit();
 }
 
-void fieldviz_draw (bool should_clear)
-{
-	global_fieldviz->draw(global_render_context->resolution, should_clear);
+void handle_sdl_event(const SDL_Event& event) {
+  if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+    global_render_context->update_resolution({event.window.data1, event.window.data2});
+  }
 }
 
-void fieldviz_update ()
-{
-	global_fieldviz->advance_simulation();
+void present_frame() {
+  gl::poll_errors_and_warn("latest frame");
+  SDL_GL_SwapWindow(global_render_context->window.get());
+}
+
+void fieldviz_draw(bool should_clear) {
+  global_fieldviz->draw(global_render_context->resolution, should_clear);
+}
+
+void fieldviz_update() {
+  global_fieldviz->advance_simulation();
 }
 
 // ================================ Shallow internal API ================================
 
-static void fieldviz_init (const Field_viz_config& cfg) { global_fieldviz.init(cfg); }
-static void fieldviz_deinit () { global_fieldviz.deinit(); }
-
-static void fieldviz_ensure_least_framebuffer_size (Resolution required_size)
-{
-	global_fieldviz->ensure_least_framebuffer_size(required_size);
+static void fieldviz_init(const Field_viz_config& cfg) {
+  global_fieldviz.init(cfg);
 }
 
-} // namespace gfx
+static void fieldviz_deinit() {
+  global_fieldviz.deinit();
+}
+
+static void fieldviz_ensure_least_framebuffer_size(Resolution required_size) {
+  global_fieldviz->ensure_least_framebuffer_size(required_size);
+}
+
+}  // namespace gfx
